@@ -60,13 +60,13 @@ ops.get('/orders', requireRole(...STAFF), wrap(async (req, res) => {
 
 const ROLE_STATUSES: Record<string, string[]> = {
   KITCHEN: ['ACCEPTED', 'PREPARING', 'READY'],
-  WAITER: ['SERVED', 'OUT_FOR_DELIVERY', 'COMPLETED'],
+  WAITER: ['SERVED', 'OUT_FOR_DELIVERY', 'COMPLETED'], // the kitchen accepts and cooks; floor staff take over once the food is ready
 };
 
 ops.patch('/orders/:id/status', requireRole(...STAFF), wrap(async (req, res) => {
   const { status } = parse(z.object({ status: z.enum(['ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'SERVED', 'COMPLETED', 'CANCELLED']) }), req.body);
   const role = req.user!.role;
-  if (role in ROLE_STATUSES && !ROLE_STATUSES[role].includes(status)) throw new HttpError(403, 'Your role cannot set that status', 'forbidden');
+  if (role in ROLE_STATUSES && !ROLE_STATUSES[role].includes(status)) throw new HttpError(403, `${role === 'KITCHEN' ? 'Kitchen accounts' : 'Waiter accounts'} cannot set orders to ${status.toLowerCase().replace(/_/g, ' ')}`, 'forbidden');
   // ingredients are only consumed while the plan includes inventory
   const stockTracked = status === 'COMPLETED' && (await hasFeature(req.user!.tenantId!, 'inventory'));
   const out = await prisma.$transaction(async (tx) => {
@@ -75,6 +75,8 @@ ops.patch('/orders/:id/status', requireRole(...STAFF), wrap(async (req, res) => 
     if (!canTransition(o.status, status)) throw new HttpError(409, `Cannot move order from ${o.status} to ${status}`, 'bad_transition');
     if (status === 'OUT_FOR_DELIVERY' && o.type !== 'DELIVERY') throw new HttpError(409, 'Only delivery orders go out for delivery', 'bad_transition');
     if (status === 'OUT_FOR_DELIVERY' && !o.deliveryPartnerId) throw new HttpError(409, 'Assign a delivery partner first', 'partner_required');
+    // an order is only finished once it has been paid (cash orders are marked paid by staff, online orders by the provider's confirmation)
+    if (status === 'COMPLETED' && o.paymentStatus === 'UNPAID') throw new HttpError(409, 'Record the payment before completing this order', 'payment_required');
     if (status === 'SERVED' && o.type !== 'DINE_IN') throw new HttpError(409, 'Only dine-in orders are served', 'bad_transition');
     // conditional update guards against two staff members racing on the same order
     const upd = await tx.order.updateMany({ where: { id: o.id, status: o.status }, data: { status } });
@@ -96,6 +98,12 @@ ops.patch('/orders/:id/status', requireRole(...STAFF), wrap(async (req, res) => 
 ops.patch('/orders/:id/payment', requireRole(...MANAGE, 'WAITER'), wrap(async (req, res) => {
   const { paymentStatus } = parse(z.object({ paymentStatus: z.enum(['PAID', 'REFUNDED']) }), req.body);
   if (paymentStatus === 'REFUNDED' && req.user!.role === 'WAITER') throw new HttpError(403, 'Refunds need a manager', 'forbidden');
+  if (paymentStatus === 'PAID' && req.user!.role === 'WAITER') {
+    // a waiter takes payment once the food is out: after serving a table, or when a takeaway/delivery order is ready
+    const o = await prisma.order.findFirst({ where: { id: req.params.id, restaurantId: rid(req) }, select: { status: true, type: true } });
+    const ok = o && (['SERVED', 'OUT_FOR_DELIVERY'].includes(o.status) || (o.status === 'READY' && o.type !== 'DINE_IN'));
+    if (o && !ok) throw new HttpError(409, 'Payment can be recorded once the order has been served', 'bad_transition');
+  }
   const from = paymentStatus === 'PAID' ? 'UNPAID' : 'PAID';
   const r = await prisma.order.updateMany({ where: { id: req.params.id, restaurantId: rid(req), paymentMethod: 'CASH', paymentStatus: from, ...(paymentStatus === 'PAID' ? { status: { not: 'CANCELLED' } } : {}) }, data: { paymentStatus } });
   if (!r.count) throw new HttpError(409, `Not a cash order that is ${from.toLowerCase()} (online payments are refunded via /payments/refund)`, 'bad_transition');

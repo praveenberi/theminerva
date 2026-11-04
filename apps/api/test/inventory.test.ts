@@ -46,6 +46,7 @@ describe('inventory', () => {
     const patch = (s: string) => request(app).patch(`/api/orders/${order.id}/status`).set(a.auth).send({ status: s });
     for (const s of ['ACCEPTED', 'PREPARING', 'READY']) await patch(s);
     expect((await ingredient(flour)).stockQty).toBe(8); // nothing consumed before completion
+    await request(app).patch(`/api/orders/${order.id}/payment`).set(a.auth).send({ paymentStatus: 'PAID' });
     expect((await patch('COMPLETED')).status).toBe(200);
     expect((await patch('COMPLETED')).status).toBe(409); // cannot complete twice, so cannot double-deduct
     expect((await ingredient(flour)).stockQty).toBe(7.25);

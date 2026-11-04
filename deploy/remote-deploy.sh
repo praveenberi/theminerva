@@ -4,7 +4,7 @@
 #   3. restart the app on the new images   4. wait for it to be healthy; if it is not, put the previous images back
 #
 #   deploy/remote-deploy.sh <image-tag>          e.g. a git sha or v1.4.0
-# Needs API_IMAGE_REPO and WEB_IMAGE_REPO in .env.production (e.g. ghcr.io/acme/tablely-api) when images come from a registry.
+# Needs API_IMAGE_REPO and WEB_IMAGE_REPO in .env.production (e.g. ghcr.io/acme/theminerva-api) when images come from a registry.
 # Migrations only move forward. Write them so the PREVIOUS version of the app still works on the new schema (add before you
 # remove), otherwise the automatic rollback below cannot save you.
 set -euo pipefail

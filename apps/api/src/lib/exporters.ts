@@ -114,7 +114,7 @@ const latin = (s: string) => s.replace(/−/g, '-').replace(/[‘’]/g, "'").re
 
 export function toPdf(r: BuiltReport): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 36, bufferPages: true, compress: false, info: { Title: r.title, Author: r.restaurant, Creator: 'Tablely' } });
+    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 36, bufferPages: true, compress: false, info: { Title: r.title, Author: r.restaurant, Creator: 'The Minerva' } });
     const chunks: Buffer[] = [];
     doc.on('data', (c: Buffer) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));

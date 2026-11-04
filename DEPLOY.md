@@ -1,4 +1,4 @@
-# Deploying Tablely
+# Deploying The Minerva
 
 This guide takes you from an empty Linux server to a running, HTTPS-protected installation, and covers updates, backups and what to watch.
 Everything marked **verified** was run for real (see "What has and hasn't been tested").
@@ -32,8 +32,8 @@ Internet ──443──▶ Caddy ──▶ web (nginx) ──┬── static f
 
 ```bash
 # 1. get the code onto the server
-sudo mkdir -p /opt/tablely && sudo chown "$USER" /opt/tablely
-git clone <your-repo-url> /opt/tablely && cd /opt/tablely
+sudo mkdir -p /opt/theminerva && sudo chown "$USER" /opt/theminerva
+git clone <your-repo-url> /opt/theminerva && cd /opt/theminerva
 
 # 2. configure
 cp deploy/.env.production.example .env.production
@@ -80,7 +80,7 @@ The API **refuses to start** in production if any of these are missing or look l
 **By hand** on the server:
 
 ```bash
-cd /opt/tablely && git pull
+cd /opt/theminerva && git pull
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
@@ -92,8 +92,8 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d --bui
 One-time setup for the automatic route:
 
 1. Put this repository on GitHub (`git init`, commit, push).
-2. On the server, in `.env.production` add `API_IMAGE_REPO=ghcr.io/<owner>/tablely-api` and `WEB_IMAGE_REPO=ghcr.io/<owner>/tablely-web` (lowercase), and run `docker login ghcr.io` with a personal access token that has `read:packages`.
-3. Create a deploy user on the server that may run Docker and write `/opt/tablely`, and an SSH key pair for it.
+2. On the server, in `.env.production` add `API_IMAGE_REPO=ghcr.io/<owner>/theminerva-api` and `WEB_IMAGE_REPO=ghcr.io/<owner>/theminerva-web` (lowercase), and run `docker login ghcr.io` with a personal access token that has `read:packages`.
+3. Create a deploy user on the server that may run Docker and write `/opt/theminerva`, and an SSH key pair for it.
 4. In GitHub → Settings → Secrets: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (private key), `DEPLOY_KNOWN_HOSTS` (output of `ssh-keyscan your-server`).
 5. In GitHub → Settings → Environments, create **production** and add yourself as a required reviewer, so every deploy waits for your approval.
 
@@ -102,13 +102,13 @@ One-time setup for the automatic route:
 ## Backups and disaster recovery
 
 ```bash
-deploy/backup/backup.sh            # writes backups/tablely-<timestamp>.dump (compressed, verified readable, mode 600)
-deploy/backup/restore.sh backups/tablely-<timestamp>.dump     # restores into a SCRATCH database "restore_check" and prints row counts
+deploy/backup/backup.sh            # writes backups/theminerva-<timestamp>.dump (compressed, verified readable, mode 600)
+deploy/backup/restore.sh backups/theminerva-<timestamp>.dump     # restores into a SCRATCH database "restore_check" and prints row counts
 ```
 
 Both verified: a dump is read back before it is kept, and a restore reproduces the live data. The restore script refuses to overwrite the live database and rejects unsafe database names.
 
-1. **Schedule it**: `crontab -e` → `15 3 * * * cd /opt/tablely && deploy/backup/backup.sh >> /var/log/tablely-backup.log 2>&1` (keeps 14 days by default; `KEEP_DAYS=30` to change).
+1. **Schedule it**: `crontab -e` → `15 3 * * * cd /opt/theminerva && deploy/backup/backup.sh >> /var/log/theminerva-backup.log 2>&1` (keeps 14 days by default; `KEEP_DAYS=30` to change).
 2. **Copy the dumps off the server** every day (object storage, another machine). A backup on the same disk dies with the server.
 3. **Back up `.env.production`** (especially `SECRETS_KEY` and `JWT_SECRET`) in a password manager or secrets vault, separately from the dumps.
 4. **Do a restore drill** every few months: run `restore.sh` on a recent dump and check the counts.
@@ -138,7 +138,7 @@ The ECS/Kubernetes route is **not tested**; only the compose stack was run.
 - Provider firewall: allow 80/443 (and SSH from your IP only). Nothing else; the database is not published.
 - SSH keys only, no root login, `unattended-upgrades` on, a non-root user for Docker.
 - `.env.production` mode 600, owned by the deploy user, never committed (`.gitignore` already excludes it).
-- Scan images regularly (`docker scout cves tablely-api:…` or Trivy) and rebuild monthly to pick up base-image fixes.
+- Scan images regularly (`docker scout cves theminerva-api:…` or Trivy) and rebuild monthly to pick up base-image fixes.
 - Pin GitHub Actions to commit SHAs and enable Dependabot for npm, Docker and Actions.
 - Review [SECURITY.md](SECURITY.md): open items there (e.g. dependency advisories, optional MFA for owners) apply to production.
 

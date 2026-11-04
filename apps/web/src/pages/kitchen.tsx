@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { Bell, BellOff, Check, Maximize2, Minimize2 } from 'lucide-react';
-import { api, errMsg } from '../lib';
+import { api, errMsg, useAuth } from '../lib';
 import { Skeleton, useToast } from '../ui';
 
 interface Item { id: string; name: string; quantity: number; options: string[]; notes: string | null; done: boolean }
@@ -31,7 +31,11 @@ export function KitchenPage() {
   const [, tick] = useState(0);
   const skew = useRef(0); // server clock minus client clock, so timers are right even if this device's clock is off
   const seen = useRef<Set<string> | null>(null);
+  const [sure, setSure] = useState<string | null>(null); // ticket whose "ready anyway?" confirmation is showing (a popup confirm() can be blocked on kitchen tablets)
+  useEffect(() => { if (!sure) return; const t = setTimeout(() => setSure(null), 6000); return () => clearTimeout(t); }, [sure]);
 
+  const { me } = useAuth();
+  const cannotCook = me?.role === 'WAITER'; // waiters may look at this screen but only kitchen accounts cook
   const feed = useQuery({ queryKey: ['kds'], queryFn: () => api<{ now: string; orders: Ticket[] }>('/kds'), refetchInterval: 4000 });
   const stats = useQuery({ queryKey: ['kds-stats'], queryFn: () => api<any>(`/kds/stats?tzOffset=${new Date().getTimezoneOffset()}`), refetchInterval: 30000 });
 
@@ -40,8 +44,8 @@ export function KitchenPage() {
   useEffect(() => {
     if (!feed.data) return;
     skew.current = new Date(feed.data.now).getTime() - Date.now();
-    const ids = new Set(feed.data.orders.map((o) => o.id));
-    if (seen.current && sound && feed.data.orders.some((o) => o.status === 'NEW' && !seen.current!.has(o.id))) beep();
+    const ids = new Set(feed.data.orders.map((o) => `${o.id}:${o.status}`)); // an order sent back to NEW by extra items also sounds the bell
+    if (seen.current && sound && feed.data.orders.some((o) => o.status === 'NEW' && !seen.current!.has(`${o.id}:NEW`))) beep();
     seen.current = ids;
   }, [feed.data, sound]);
 
@@ -77,6 +81,7 @@ export function KitchenPage() {
         <button className="rounded-lg bg-white/10 p-2 hover:bg-white/20" onClick={goFull} aria-label={full ? 'Exit full screen' : 'Full screen'}>{full ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
       </div>
 
+      {cannotCook && <p role="status" className="mb-3 rounded-lg bg-amber-400/20 p-3 text-sm text-amber-200">You are signed in as {me!.name} (Waiter account), so you can view tickets but not start or finish cooking. Ask the owner to change your role to Kitchen in Staff, then sign in again.</p>}
       {feed.isLoading ? <Skeleton className="h-64 bg-white/10" /> : feed.error ? <p className="text-red-300" role="alert">{errMsg(feed.error)}</p> : orders.length === 0 ? (
         <p className="py-24 text-center text-xl text-white/50">No orders in the kitchen. New orders appear here automatically.</p>
       ) : (
@@ -94,8 +99,8 @@ export function KitchenPage() {
                 <motion.div layout key={o.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                   className={`flex flex-col rounded-2xl border-2 bg-stone-800 p-4 ${tone}`}>
                   <div className="flex items-start justify-between">
-                    <div><p className="text-3xl font-extrabold">#{o.number}</p>
-                      <p className="text-sm text-white/70">{o.type.replace('_', ' ')}{o.table ? ` · Table ${o.table}` : ''} · {o.customerName}</p></div>
+                    <div><p className="text-3xl font-extrabold">{o.table ? `Table ${o.table}` : o.type.replace('_', ' ')} <span className="text-xl font-bold text-white/60">#{o.number}</span></p>
+                      <p className="text-sm text-white/70">{o.type.replace('_', ' ')} · {o.customerName}</p></div>
                     <div className="text-right"><p className={`text-2xl font-bold tabular-nums ${!ready && ratio >= 1 ? 'animate-pulse text-red-400' : ''}`}>{mmss(elapsed)}</p>
                       <p className="text-xs text-white/50">target {o.targetMinutes} min</p>{!ready && ratio >= 1 && <p className="text-xs font-bold text-red-400">LATE</p>}</div>
                   </div>
@@ -114,11 +119,12 @@ export function KitchenPage() {
                     ))}
                   </ul>
                   {ready ? <p className="flex items-center justify-center gap-2 rounded-xl bg-sky-500/20 py-3 font-semibold text-sky-200"><Check size={18} /> Ready for {o.type === 'DELIVERY' ? 'rider pickup' : o.type === 'DINE_IN' ? 'service' : 'collection'}</p> : act && (
-                    <button className="rounded-xl bg-emerald-600 py-3 text-lg font-bold hover:bg-emerald-500 disabled:opacity-50" disabled={move.isPending}
+                    <button className={`rounded-xl py-3 text-lg font-bold disabled:opacity-50 ${sure === o.id ? 'bg-amber-500 text-stone-900 hover:bg-amber-400' : 'bg-emerald-600 hover:bg-emerald-500'}`} disabled={move.isPending || cannotCook}
                       onClick={() => {
-                        if (act.to === 'READY' && doneCount < o.items.length && !confirm(`${o.items.length - doneCount} item(s) not ticked. Mark order ready anyway?`)) return;
+                        if (act.to === 'READY' && doneCount < o.items.length && sure !== o.id) { setSure(o.id); return; }
+                        setSure(null);
                         move.mutate({ id: o.id, status: act.to });
-                      }}>{act.label}{cooking && ` · ${doneCount}/${o.items.length}`}</button>
+                      }}>{sure === o.id ? `${o.items.length - doneCount} not ticked. Tap again to mark ready` : <>{act.label}{cooking && ` · ${doneCount}/${o.items.length}`}</>}</button>
                   )}
                 </motion.div>
               );

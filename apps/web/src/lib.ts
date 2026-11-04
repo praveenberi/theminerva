@@ -76,3 +76,28 @@ export async function download(path: string): Promise<string> {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
   return name;
 }
+
+/** Shrinks a photo in the browser (phone pictures are several MB) to at most `max` pixels on the long side, as a JPEG. */
+export async function shrinkImage(file: File, max = 900, quality = 0.85): Promise<Blob> {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('Choose a JPEG, PNG or WebP picture');
+  if (file.size > 20_000_000) throw new Error('That picture is too large (limit 20 MB)');
+  const bmp = await createImageBitmap(file).catch(() => { throw new Error('This picture could not be read'); });
+  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bmp.width * scale)); canvas.height = Math.max(1, Math.round(bmp.height * scale));
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); // transparent PNGs get a white background
+  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  bmp.close();
+  return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('This picture could not be prepared'))), 'image/jpeg', quality));
+}
+
+/** Uploads a (shrunk) picture and returns the address to store on the menu item. */
+export async function uploadImage(blob: Blob): Promise<string> {
+  const go = () => fetch('/api/images', { method: 'POST', credentials: 'include', headers: { 'Content-Type': blob.type, ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) }, body: blob });
+  let res = await go();
+  if (res.status === 401 && accessToken && (await refreshSession())) res = await go();
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, data?.error?.message ?? 'Upload failed', data?.error?.code ?? 'error');
+  return data.url as string;
+}

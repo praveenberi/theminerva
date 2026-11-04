@@ -61,23 +61,30 @@ export function Landing() {
   return (
     <div>
       <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5">
-        <span className="flex items-center gap-2 text-xl font-extrabold"><ChefHat className="text-brand-500" /> Tablely</span>
+        <span className="flex items-center gap-2 text-xl font-extrabold"><ChefHat className="text-brand-500" /> The Minerva</span>
         <nav className="flex items-center gap-2">
           <Link to="/r/the-minerva" className="btn-ghost hidden sm:inline-flex">Live demo</Link>
           {me ? <Link to={me.role === 'SUPER_ADMIN' ? '/admin' : '/app'} className="btn-primary">Open dashboard</Link>
             : <><Link to="/login" className="btn-ghost">Log in</Link><Link to="/register" className="btn-primary">Get started</Link></>}
         </nav>
       </header>
-      <section className="mx-auto max-w-6xl px-4 py-16 text-center sm:py-24">
-        <motion.h1 initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-3xl text-4xl font-extrabold tracking-tight sm:text-6xl">
-          Your restaurant, online in minutes.
-        </motion.h1>
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }} className="mx-auto mt-5 max-w-xl text-lg text-stone-600">
-          Digital menu, QR ordering, reservations and analytics in one simple platform.
-        </motion.p>
-        <div className="mt-8 flex justify-center gap-3">
-          <Link to="/register" className="btn-primary px-6 py-3">Create your storefront</Link>
-          <Link to="/r/the-minerva" className="btn-ghost px-6 py-3">Try the demo menu</Link>
+      <section className="mx-auto max-w-6xl px-4 pb-8 sm:pb-12">
+        <div className="relative overflow-hidden rounded-3xl bg-stone-900">
+          <img src="/hero.webp" alt="The Minerva Indian Dining restaurant front at night, with green signs, marigold garlands and outdoor plants" width={2000} height={750} fetchPriority="high"
+            className="absolute inset-0 h-full w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/20" aria-hidden />
+          <div className="relative flex min-h-[420px] flex-col items-center justify-end px-4 pb-10 pt-32 text-center text-white sm:min-h-[520px] sm:pb-14">
+            <motion.h1 initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-3xl text-4xl font-extrabold tracking-tight drop-shadow sm:text-6xl">
+              Your restaurant, online in minutes.
+            </motion.h1>
+            <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }} className="mx-auto mt-4 max-w-xl text-lg text-white/90">
+              Digital menu, QR ordering, reservations and analytics in one simple platform.
+            </motion.p>
+            <div className="mt-7 flex flex-wrap justify-center gap-3">
+              <Link to="/register" className="btn-primary px-6 py-3">Create your storefront</Link>
+              <Link to="/r/the-minerva" className="btn bg-white px-6 py-3 text-stone-900 hover:bg-stone-100">Try the demo menu</Link>
+            </div>
+          </div>
         </div>
       </section>
       <section className="mx-auto grid max-w-6xl gap-4 px-4 pb-16 sm:grid-cols-2 lg:grid-cols-3">
@@ -111,7 +118,7 @@ function AuthShell({ title, children, footer }: { title: string; children: React
   return (
     <div className="grid min-h-screen place-items-center px-4">
       <div className="w-full max-w-md">
-        <Link to="/" className="mb-6 flex items-center justify-center gap-2 text-xl font-extrabold"><ChefHat className="text-brand-500" /> Tablely</Link>
+        <Link to="/" className="mb-6 flex items-center justify-center gap-2 text-xl font-extrabold"><ChefHat className="text-brand-500" /> The Minerva</Link>
         <div className="card p-7">
           <h1 className="mb-5 text-2xl font-bold">{title}</h1>
           {children}

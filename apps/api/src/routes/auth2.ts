@@ -45,7 +45,7 @@ auth2.post('/reset-password', limiter, wrap(async (req, res) => {
     prisma.authToken.updateMany({ where: { userId: user.id, purpose: 'PASSWORD_RESET', usedAt: null }, data: { usedAt: new Date() } }), // any other outstanding links die too
   ]);
   clearAuthCache(user.id);
-  void sendSecurityNotice(user.email, 'The password on your Tablely account was just changed using a reset link.');
+  void sendSecurityNotice(user.email, 'The password on your account at The Minerva was just changed using a reset link.');
   // MFA, if on, is deliberately untouched: the email alone must not be enough to take over the account
   res.json({ ok: true, mfaRequired: user.mfaEnabled });
 }));
@@ -127,7 +127,7 @@ auth2.post('/mfa/enable', limiter, authenticate, wrap(async (req, res) => {
   await prisma.user.update({ where: { id: u.id }, data: { mfaEnabled: true, mfaSecretEnc: u.mfaPendingEnc, mfaPendingEnc: null, mfaLastStep: step, recoveryCodes: codes.map(recoveryHash) } });
   await revokeSessions(u.id); // sessions opened without MFA must not outlive turning it on
   clearAuthCache(u.id);
-  void sendSecurityNotice(u.email, 'Two-factor authentication was turned on for your Tablely account.');
+  void sendSecurityNotice(u.email, 'Two-factor authentication was turned on for your account at The Minerva.');
   res.json({ recoveryCodes: codes, user: userView(u), ...(await issue(u, res)) }); // shown once: only hashes are kept
 }));
 
@@ -139,7 +139,7 @@ auth2.post('/mfa/disable', limiter, authenticate, wrap(async (req, res) => {
   await prisma.user.update({ where: { id: u.id }, data: { mfaEnabled: false, mfaSecretEnc: null, mfaPendingEnc: null, mfaLastStep: null, recoveryCodes: [] } });
   await revokeSessions(u.id);
   clearAuthCache(u.id);
-  void sendSecurityNotice(u.email, 'Two-factor authentication was turned off for your Tablely account.');
+  void sendSecurityNotice(u.email, 'Two-factor authentication was turned off for your account at The Minerva.');
   res.json({ ok: true, user: userView(u), ...(await issue(u, res)) });
 }));
 
@@ -176,7 +176,7 @@ async function resetMfa(userId: string, actorId: string, scope: string) {
   await revokeSessions(userId);
   clearAuthCache(userId);
   await prisma.auditLog.create({ data: { actorId, action: 'mfa.reset', detail: { userId, by: scope } } });
-  void sendSecurityNotice(u.email, 'Two-factor authentication was reset on your Tablely account by an administrator. Set it up again after you sign in.');
+  void sendSecurityNotice(u.email, 'Two-factor authentication was reset on your account at The Minerva by an administrator. Set it up again after you sign in.');
 }
 
 /** An owner can reset the second factor of their own staff (never of another owner). */

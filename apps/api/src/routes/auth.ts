@@ -223,7 +223,7 @@ staff.post(
 staff.patch(
   '/:id',
   wrap(async (req, res) => {
-    const d = parse(z.object({ active: z.boolean().optional(), restaurantId: z.string().optional() }), req.body);
+    const d = parse(z.object({ active: z.boolean().optional(), restaurantId: z.string().optional(), role: z.enum(['MANAGER', 'KITCHEN', 'WAITER']).optional() }), req.body);
     if (d.active === true) await assertStaffRoom(req.user!.tenantId!);
     if (d.restaurantId && !(await prisma.restaurant.count({ where: { id: d.restaurantId, tenantId: req.user!.tenantId! } })))
       throw new HttpError(400, 'Unknown outlet', 'validation', { restaurantId: ['Unknown outlet'] });
@@ -232,7 +232,7 @@ staff.patch(
       data: d,
     });
     if (!r.count) throw new HttpError(404, 'Not found', 'not_found');
-    clearAuthCache(); // deactivation or a move must bite immediately, not when the old token expires
+    clearAuthCache(); // deactivation, a move or a new role must bite immediately, not when the old token expires
     if (d.active === false) await endAllSessions(req.params.id);
     res.json({ ok: true });
   }),

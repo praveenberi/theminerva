@@ -43,6 +43,8 @@ export function createApp() {
   app.use(cors({ origin: env.webOrigin, credentials: true }));
   // webhooks need the untouched bytes for signature verification, so they bypass the JSON parser
   app.use('/api/payments/webhook', express.raw({ type: '*/*', limit: '256kb' }));
+  // menu photos arrive as the raw file bytes (the web app shrinks them first, so 1 MB is generous)
+  app.use('/api/images', express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: '1mb' }));
   app.use('/api/menu/import', express.json({ limit: '700kb' })); // the only endpoint that legitimately takes a big body
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());

@@ -8,7 +8,7 @@ function Shell({ title, children, footer }: { title: string; children: React.Rea
   return (
     <div className="grid min-h-screen place-items-center px-4">
       <div className="w-full max-w-md">
-        <Link to="/" className="mb-6 flex items-center justify-center gap-2 text-xl font-extrabold"><ChefHat className="text-brand-500" /> Tablely</Link>
+        <Link to="/" className="mb-6 flex items-center justify-center gap-2 text-xl font-extrabold"><ChefHat className="text-brand-500" /> The Minerva</Link>
         <div className="card p-7"><h1 className="mb-5 text-2xl font-bold">{title}</h1>{children}</div>
         {footer && <p className="mt-4 text-center text-sm text-stone-600">{footer}</p>}
       </div>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
-import { CalendarDays, Check, Leaf, Minus, Phone, Plus, Search, ShoppingBag } from 'lucide-react';
+import { CalendarDays, Check, Leaf, Minus, Phone, Plus, RefreshCw, Search, ShoppingBag } from 'lucide-react';
 import { api, errMsg, money, safeRedirect } from '../lib';
 import { Empty, Field, Modal, Page, Skeleton, useToast } from '../ui';
 
@@ -22,7 +22,7 @@ function useCart(slug: string) {
     return i < 0 ? [...cur, l] : cur.map((x, j) => (j === i ? { ...x, quantity: x.quantity + l.quantity } : x));
   });
   const setQty = (key: string, q: number) => setLines((cur) => (q <= 0 ? cur.filter((x) => x.key !== key) : cur.map((x) => (x.key === key ? { ...x, quantity: q } : x))));
-  return { lines, add, setQty, clear: () => setLines([]), count: lines.reduce((s, l) => s + l.quantity, 0), subtotal: lines.reduce((s, l) => s + l.unitCents * l.quantity, 0) };
+  return { lines, add, setQty, clear: () => { try { localStorage.removeItem(k); } catch { /* storage unavailable */ } setLines([]); }, count: lines.reduce((s, l) => s + l.quantity, 0), subtotal: lines.reduce((s, l) => s + l.unitCents * l.quantity, 0) };
 }
 
 export function Storefront() {
@@ -84,10 +84,13 @@ export function Storefront() {
                 {c.products.map((p) => (
                   <motion.button layout key={p.id} whileTap={{ scale: 0.98 }} disabled={!p.available} onClick={() => setPicked(p)}
                     className="card flex w-full items-start justify-between gap-3 p-4 text-left disabled:opacity-50">
-                    <div>
+                    <div className="flex min-w-0 items-start gap-3">
+                      {p.imageUrl && <img src={p.imageUrl} alt="" loading="lazy" className="h-20 w-20 shrink-0 rounded-xl object-cover" />}
+                      <div>
                       <p className="font-semibold">{p.name} {p.dietary.includes('VEG') || p.dietary.includes('VEGAN') ? <Leaf className="inline text-green-600" size={14} /> : null}</p>
                       <p className="mt-0.5 text-sm text-stone-600">{p.description}</p>
                       {!p.available && <p className="mt-1 text-xs font-semibold text-red-600">Currently unavailable</p>}
+                      </div>
                     </div>
                     <div className="shrink-0 text-right font-semibold">
                       {money(p.discountPriceCents ?? p.priceCents, cur)}
@@ -130,6 +133,7 @@ function ProductModal({ product: p, cur, onClose, onAdd }: { product: Product | 
   const unit = unitOf(p, v, chosen);
   return (
     <Modal open onClose={onClose} title={p.name}>
+      {p.imageUrl && <img src={p.imageUrl} alt={p.name} className="mb-3 h-48 w-full rounded-xl object-cover" />}
       <p className="text-sm text-stone-600">{p.description}</p>
       {p.allergens.length > 0 && <p className="mt-2 text-xs font-semibold text-amber-700">Contains: {p.allergens.join(', ')}</p>}
       {p.variants.length > 0 && (
@@ -199,13 +203,15 @@ function CartModal({ open, onClose, cart, restaurant: r, slug, table }: { open: 
     onError: (e) => { setCoupon(null); toast(errMsg(e), 'err'); },
   });
   const place = useMutation({
-    mutationFn: () => api<{ trackingCode: string; payUrl?: string; referral?: string }>(`/public/${slug}/orders`, {
+    mutationFn: () => api<{ trackingCode: string; number: number; payUrl?: string; referral?: string; merged?: boolean }>(`/public/${slug}/orders`, {
       body: { type, ...f, email: f.email || undefined, tableLabel: type === 'DINE_IN' ? f.tableLabel : undefined, address: type === 'DELIVERY' ? f.address : undefined, zoneId: type === 'DELIVERY' && zoneId ? zoneId : undefined,
         couponCode: coupon?.code, referralCode: extra.referralCode || undefined, birthday: extra.birthday || undefined, tipCents: tip, paymentMethod: payMethod,
         items: cart.lines.map((l) => ({ productId: l.productId, quantity: l.quantity, variantId: l.variantId, addonIds: l.addonIds, notes: l.notes })) },
     }),
     onSuccess: (o) => {
       if (o.referral) toast(o.referral === 'applied' ? 'Referral applied. You and your friend get a bonus after your first order.' : 'Referral code was not applied (it only works for first-time customers).');
+      if (o.merged) toast(`Added to your open order #${o.number}. The kitchen has it.`);
+      try { localStorage.setItem(`guest:${slug}`, JSON.stringify({ code: o.trackingCode, customerName: f.customerName, customerPhone: f.customerPhone, email: f.email })); } catch { /* storage unavailable */ }
       cart.clear(); onClose();
       if (o.payUrl && safeRedirect(o.payUrl)) return; // hosted payment page; the provider returns to /track/:code
       if (o.payUrl) toast('The payment page link looks invalid. Please open your order and try again.', 'err');
@@ -214,6 +220,22 @@ function CartModal({ open, onClose, cart, restaurant: r, slug, table }: { open: 
     onError: (e: any) => { setErrors(e.details && !Array.isArray(e.details) ? e.details : {}); toast(errMsg(e), 'err'); },
   });
   const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
+
+  // While the guest's earlier order is still open, ordering more fills in their name and number. Once it is completed or cancelled
+  // the saved details are dropped, so the next visitor on a shared phone starts with a blank form.
+  useEffect(() => {
+    if (!open) return;
+    let saved: { code: string; customerName: string; customerPhone: string; email?: string } | null = null;
+    try { saved = JSON.parse(localStorage.getItem(`guest:${slug}`) || 'null'); } catch { /* ignore */ }
+    if (!saved?.code) return;
+    let live = true;
+    api<{ status: string }>(`/public/orders/track/${saved.code}`).then((o) => {
+      if (!live) return;
+      if (['COMPLETED', 'CANCELLED'].includes(o.status)) { try { localStorage.removeItem(`guest:${slug}`); } catch { /* ignore */ } return; }
+      setF((cur) => ({ ...cur, customerName: cur.customerName || saved!.customerName, customerPhone: cur.customerPhone || saved!.customerPhone, email: cur.email || saved!.email || '' }));
+    }).catch(() => { /* offline or unknown order: leave the form empty */ });
+    return () => { live = false; };
+  }, [open, slug]);
 
   return (
     <Modal open={open} onClose={onClose} title="Your order">
@@ -354,7 +376,7 @@ export function TestPay() {
 
 export function Track() {
   const { code = '' } = useParams();
-  const { data, error } = useQuery({ queryKey: ['track', code], queryFn: () => api<any>(`/public/orders/track/${code}`), refetchInterval: (q) => (['COMPLETED', 'CANCELLED'].includes(q.state.data?.status) ? false : 5000) });
+  const { data, error, refetch, isFetching } = useQuery({ queryKey: ['track', code], queryFn: () => api<any>(`/public/orders/track/${code}`), refetchInterval: (q) => (['COMPLETED', 'CANCELLED'].includes(q.state.data?.status) ? false : 5000) });
   if (error) return <div className="mx-auto max-w-md p-8"><Empty title="Order not found" hint="Check the link and try again." /></div>;
   if (!data) return <div className="mx-auto max-w-md space-y-3 p-4"><Skeleton /><Skeleton /></div>;
   const idx = STEPS.indexOf(data.status === 'SERVED' || data.status === 'OUT_FOR_DELIVERY' ? 'READY' : data.status);
@@ -362,7 +384,7 @@ export function Track() {
   return (
     <Page>
       <div className="mx-auto max-w-md space-y-4 p-4">
-        <div className="card text-center"><p className="text-sm text-stone-500">{data.restaurant.name}</p><h1 className="text-2xl font-extrabold">Order #{data.number}</h1>
+        <div className="card text-center"><p className="text-sm text-stone-500">{data.restaurant.name}</p><h1 className="text-2xl font-extrabold">{data.table ? `Table ${data.table} · ` : ''}Order #{data.number}</h1>
           <p className="mt-1 text-lg font-semibold text-brand-600" aria-live="polite">{data.status === 'CANCELLED' ? 'Cancelled' : data.status.replace(/_/g, ' ')}</p></div>
         {data.etaAt && !['COMPLETED', 'CANCELLED', 'PENDING_PAYMENT'].includes(data.status) && <div className="card text-center text-sm">Estimated delivery by <b>{new Date(data.etaAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></div>}
         {data.rider && <div className="card text-sm"><p className="font-semibold">Your order is on its way</p><p className="mt-1 text-stone-600">Rider: {data.rider.name} · <a className="font-semibold text-brand-600" href={`tel:${data.rider.phone}`}>{data.rider.phone}</a></p></div>}
@@ -383,11 +405,15 @@ export function Track() {
           <ol className="card space-y-3">
             {STEPS.map((s, i) => (
               <li key={s} className={`flex items-center gap-3 text-sm ${i <= idx ? 'font-semibold' : 'text-stone-400'}`}>
-                <motion.span layout className={`grid h-6 w-6 place-items-center rounded-full text-xs ${i <= idx ? 'bg-brand-500 text-white' : 'bg-stone-200'}`}>{i < idx ? <Check size={14} /> : i + 1}</motion.span>{s[0] + s.slice(1).toLowerCase()}
+                <motion.span layout className={`grid h-6 w-6 place-items-center rounded-full text-xs ${i <= idx ? 'bg-brand-500 text-white' : 'bg-stone-200'}`}>{i < idx || data.status === 'COMPLETED' ? <Check size={14} /> : i + 1}</motion.span>{s[0] + s.slice(1).toLowerCase()}
               </li>
             ))}
           </ol>
         )}
+        <div className="flex gap-2">
+          <Link className="btn-primary flex-1" to={`/r/${data.restaurant.slug}${data.table ? `?table=${encodeURIComponent(data.table)}` : ''}`}>Browse menu</Link>
+          <button className="btn-ghost flex-1" onClick={() => refetch()} disabled={isFetching}><RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} /> {isFetching ? 'Refreshing…' : 'Refresh'}</button>
+        </div>
         <div className="card text-sm">
           {data.items.map((i: any, k: number) => <div key={k} className="flex justify-between py-0.5"><span>{i.quantity} × {i.name}</span><span>{money(i.unitPriceCents * i.quantity, data.restaurant.currency)}</span></div>)}
           <div className="mt-2 flex justify-between border-t pt-2 font-bold"><span>Total ({data.paymentMethod.toLowerCase()} · {data.paymentStatus.toLowerCase()})</span><span>{money(data.totalCents, data.restaurant.currency)}</span></div>

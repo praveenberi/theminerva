@@ -27,7 +27,7 @@ const svgUrl = (svg: string) => `data:image/svg+xml;base64,${btoa(svg)}`;
 function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
   const toast = useToast();
   const [saved, setSaved] = useState(false);
-  const text = `Tablely recovery codes\nEach works once. Keep them somewhere safe and private.\n\n${codes.join('\n')}\n`;
+  const text = `The Minerva recovery codes\nEach works once. Keep them somewhere safe and private.\n\n${codes.join('\n')}\n`;
   return (
     <div className="space-y-3">
       <p className="text-sm font-semibold">Save your recovery codes now. They won’t be shown again.</p>
@@ -35,7 +35,7 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
       <div className="grid grid-cols-2 gap-2 rounded-xl bg-stone-100 p-3 font-mono text-sm" aria-label="Recovery codes">{codes.map((c) => <span key={c}>{c}</span>)}</div>
       <div className="flex gap-2">
         <button type="button" className="btn-ghost" onClick={() => navigator.clipboard?.writeText(text).then(() => toast('Copied'))}>Copy</button>
-        <a className="btn-ghost" href={URL.createObjectURL(new Blob([text], { type: 'text/plain' }))} download="tablely-recovery-codes.txt">Download</a>
+        <a className="btn-ghost" href={URL.createObjectURL(new Blob([text], { type: 'text/plain' }))} download="theminerva-recovery-codes.txt">Download</a>
       </div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} /> I’ve saved these codes</label>
       <button className="btn-primary" disabled={!saved} onClick={onDone}>Done</button>

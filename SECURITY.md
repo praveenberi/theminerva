@@ -1,4 +1,4 @@
-# Security audit: Tablely
+# Security audit: The Minerva
 
 Scope: the code in this repository (API, web app, database schema, seed and Docker files). Method: manual code review of every route and
 middleware, a dependency audit (`npm audit`), then **evidence-first fixing**: for each weakness a test was written that failed on the old
@@ -24,7 +24,7 @@ This is a thorough review, not a penetration test or a guarantee.
 | S-09 | Medium | CSV export could carry spreadsheet formulas (`=HYPERLINK(...)`) typed into menu item names. | Cells starting with `= + - @` are prefixed with `'`. |
 | S-10 | Medium | `trust proxy` was hard-coded to 1, so clients could spoof `X-Forwarded-For` and walk around every rate limit; there was no global limit. | `TRUST_PROXY` setting (default 0), global per-IP limit (600/min) besides the tighter ones. |
 | S-11 | Medium | Tracking codes, unsubscribe tokens and webhook tokens (bearer secrets in URL paths) were written to request logs. | Paths are redacted before logging. |
-| S-12 | **High if deployed** | The seed script created well-known accounts (`admin@tablely.test`, password `Password123!`) in any environment. | Refuses to run in production without `ADMIN_EMAIL` / a 14+ character `ADMIN_PASSWORD`, and then creates only that admin. |
+| S-12 | **High if deployed** | The seed script created well-known accounts (`admin@theminerva.test`, password `Password123!`) in any environment. | Refuses to run in production without `ADMIN_EMAIL` / a 14+ character `ADMIN_PASSWORD`, and then creates only that admin. |
 | S-13 | Medium | The development database (password `tablely`) was published on all network interfaces. | Bound to `127.0.0.1`. |
 | S-14 | Medium | Nothing stopped a production start with a placeholder `JWT_SECRET`, no `SECRETS_KEY`, http origins or dev DB credentials. | Startup refuses in production with a list of problems. |
 | S-15 | Low | A NUL character in any text field or URL crashed the query: an unhandled 500 and a stack trace in the logs (found by fuzzing). | Rejected up front with 400; defensive handler for the database error. |
@@ -72,6 +72,15 @@ Most of this is now provided by the repository and described in [DEPLOY.md](DEPL
 6. Keep `ENABLE_TEST_PAYMENTS`, `ENABLE_TEST_MESSAGING` and `ALLOW_LIVE_PAYMENT_KEYS` unset.
 7. Run `npm audit` in CI and update dependencies regularly; add the two upgrades above to the backlog.
 8. Alert on the log events `auth.account_locked`, `auth.refresh_reuse`, `payment.amount_mismatch` and `subscription.payment_for_closed_invoice`.
+
+## Menu pictures (added after the audit above)
+
+| Area | What it does |
+|---|---|
+| Upload | Owner and manager only, rate limited per user, 1 MB body limit, 300 pictures per restaurant. The file's real type is read from its first bytes (JPEG, PNG or WebP); the declared content type is ignored, so an SVG or HTML file renamed as a picture is refused. |
+| Serving | Public, unguessable ids, `Content-Type` from the stored type, `nosniff`, `Content-Security-Policy: sandbox`, one-year immutable cache. No SVG, so no script can run from a picture. |
+| Clean-up | A picture is deleted when its item is deleted or its picture replaced, unless another item (a duplicate, a copied outlet menu) still uses it. Deleting a restaurant deletes its pictures. |
+| Not done | No re-encoding on the server (the browser shrinks and re-encodes, but a determined uploader can send raw bytes), no virus or content moderation, and pictures are public by address once known. |
 
 ## Reports and exports (added after the audit above)
 

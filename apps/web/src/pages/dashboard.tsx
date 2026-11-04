@@ -3,8 +3,8 @@ import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Award, BarChart3, Bike, CreditCard, KeyRound, Lock, Boxes, Megaphone, CalendarDays, CookingPot, Store, ChefHat, ChevronLeft, ClipboardList, ExternalLink, LayoutDashboard, LogOut, Menu as MenuIcon, QrCode, Settings, Tag, UtensilsCrossed, Users, UserCog } from 'lucide-react';
-import { api, errMsg, escapeHtml, fieldErrors, money, useAuth, type Me } from '../lib';
+import { Award, BarChart3, Bike, Image as ImageIcon, Upload, CreditCard, KeyRound, Lock, Boxes, Megaphone, CalendarDays, CookingPot, Store, ChefHat, ChevronLeft, ClipboardList, ExternalLink, LayoutDashboard, LogOut, Menu as MenuIcon, QrCode, Settings, Tag, UtensilsCrossed, Users, UserCog } from 'lucide-react';
+import { api, errMsg, escapeHtml, fieldErrors, money, shrinkImage, uploadImage, useAuth, type Me } from '../lib';
 import { Empty, Field, Modal, Page, Skeleton, useToast } from '../ui';
 import { InventoryPage, RecipeModal } from './inventory';
 import { KitchenPage } from './kitchen';
@@ -52,7 +52,7 @@ export function Dashboard() {
   const multi = (outletList.data?.outlets.length ?? 0) > 1;
   const side = (
     <nav className="flex h-full flex-col gap-1 p-3">
-      <div className="mb-4 flex items-center gap-2 px-2 text-lg font-extrabold"><ChefHat className="shrink-0 text-brand-500" />{!collapsed && 'Tablely'}</div>
+      <div className="mb-4 flex items-center gap-2 px-2 text-lg font-extrabold"><ChefHat className="shrink-0 text-brand-500" />{!collapsed && 'The Minerva'}</div>
       {multi && !collapsed && (
         <select className="input mb-3 py-2 text-sm font-semibold" aria-label="Current outlet" value={me!.restaurant?.id ?? ''}
           onChange={async (e) => { await switchTo(e.target.value); nav('/app'); setMobile(false); }}>
@@ -68,6 +68,7 @@ export function Dashboard() {
       ))}
       <div className="mt-auto space-y-1">
         {me!.restaurant && <a href={`/r/${me!.restaurant.slug}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-stone-600 hover:bg-stone-100"><ExternalLink size={18} />{!collapsed && 'View storefront'}</a>}
+        {!collapsed && <p className="px-3 pb-1 text-xs text-stone-500" title={me!.email}>Signed in as <b>{me!.name}</b> · {me!.role.charAt(0) + me!.role.slice(1).toLowerCase()}</p>}
         <button onClick={logout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-stone-600 hover:bg-stone-100"><LogOut size={18} />{!collapsed && 'Log out'}</button>
       </div>
     </nav>
@@ -168,6 +169,10 @@ const NEXT: Record<string, { label: string; to: string }[]> = {
   READY: [], SERVED: [{ label: 'Complete', to: 'COMPLETED' }], OUT_FOR_DELIVERY: [{ label: 'Complete', to: 'COMPLETED' }],
 };
 
+const ROLE_ALLOWED: Record<string, string[]> = { KITCHEN: ['ACCEPTED', 'PREPARING', 'READY'], WAITER: ['SERVED', 'OUT_FOR_DELIVERY', 'COMPLETED'] };
+// Waiters watch New, Accepted and Preparing, then act once the order is ready. Dine-in guests pay after being served, so no Mark paid while it is only Ready.
+const waiterCanMarkPaid = (o: any) => ['SERVED', 'OUT_FOR_DELIVERY'].includes(o.status) || (o.status === 'READY' && o.type !== 'DINE_IN');
+
 function Orders() {
   const qc = useQueryClient();
   const toast = useToast();
@@ -204,7 +209,8 @@ function Orders() {
   const actions = (o: any) => {
     const a = [...(NEXT[o.status] ?? [])];
     if (o.status === 'READY') a.push(o.type === 'DELIVERY' ? { label: 'Out for delivery', to: 'OUT_FOR_DELIVERY' } : o.type === 'DINE_IN' ? { label: 'Served', to: 'SERVED' } : { label: 'Complete', to: 'COMPLETED' });
-    return a;
+    const allowed = ROLE_ALLOWED[me!.role]; // no dead buttons: only show what this role may do
+    return allowed ? a.filter((x) => allowed.includes(x.to)) : a;
   };
   return (
     <Page>
@@ -214,7 +220,7 @@ function Orders() {
       {isLoading ? <Skeleton className="h-64" /> : view !== 'active' ? (
         !items.length ? <Empty title="No orders here" /> : (
           <div className="card overflow-x-auto p-0"><table className="w-full text-left text-sm"><thead className="bg-stone-50 text-xs uppercase text-stone-500"><tr>{['#', 'Customer', 'Type', 'Total', 'Payment', ''].map((h) => <th key={h} className="px-4 py-3">{h}</th>)}</tr></thead>
-            <tbody>{items.map((o) => <tr key={o.id} className="border-t border-stone-100"><td className="px-4 py-3 font-semibold">#{o.number}</td><td className="px-4 py-3">{o.customerName}</td><td className="px-4 py-3">{o.type.replace('_', ' ')}</td><td className="px-4 py-3">{money(o.totalCents, cur)}</td>
+            <tbody>{items.map((o) => <tr key={o.id} className="border-t border-stone-100"><td className="px-4 py-3 font-semibold">#{o.number}</td><td className="px-4 py-3">{o.customerName}</td><td className="px-4 py-3">{o.type.replace('_', ' ')}{o.table ? ` · Table ${o.table.label}` : ''}</td><td className="px-4 py-3">{money(o.totalCents, cur)}</td>
               <td className="px-4 py-3">{o.paymentMethod.toLowerCase()} · {o.paymentStatus.replace('_', ' ').toLowerCase()}</td>
               <td className="px-4 py-3 text-right">{canCancel && o.paymentMethod === 'ONLINE' && ['PAID', 'PARTIALLY_REFUNDED'].includes(o.paymentStatus) && <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => refund(o)}>Refund</button>}</td></tr>)}</tbody></table></div>)
       ) : (
@@ -230,8 +236,8 @@ function Orders() {
                       const mins = Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000);
                       return (
                         <motion.div layout key={o.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="card p-3 text-sm">
-                          <div className="flex justify-between font-bold"><span>#{o.number}</span><span className={mins > 20 && ['NEW', 'ACCEPTED', 'PREPARING'].includes(o.status) ? 'text-red-600' : 'text-stone-400'}>{mins}m</span></div>
-                          <p className="text-xs text-stone-500">{o.type.replace('_', ' ')}{o.table ? ` · ${o.table.label}` : ''} · {o.customerName}</p>
+                          <div className="flex justify-between font-bold"><span>{o.table ? <span className="mr-1.5 rounded-md bg-stone-900 px-2 py-0.5 text-sm text-white">Table {o.table.label}</span> : null}#{o.number}</span><span className={mins > 20 && ['NEW', 'ACCEPTED', 'PREPARING'].includes(o.status) ? 'text-red-600' : 'text-stone-400'}>{mins}m</span></div>
+                          <p className="text-xs text-stone-500">{o.type.replace('_', ' ')} · {o.customerName}</p>
                           <ul className="my-2 space-y-0.5">{o.items.map((i: any) => <li key={i.id}>{i.quantity}× {i.name}{i.options?.length ? <span className="text-xs text-stone-500"> ({i.options.join(', ')})</span> : null}{i.notes && <div className="text-xs italic text-amber-700">“{i.notes}”</div>}</li>)}</ul>
                           {o.notes && <p className="mb-2 rounded bg-amber-50 p-1.5 text-xs text-amber-800">{o.notes}</p>}
                           {['ACCEPTED', 'PREPARING'].includes(o.status) && <p className="mb-1 text-xs text-stone-500">Prepared {o.items.filter((i: any) => i.prepDone).length}/{o.items.length}</p>}
@@ -239,10 +245,12 @@ function Orders() {
                           {o.type === 'DELIVERY' && !canAssign && o.deliveryPartner && <p className="mb-1 text-xs text-stone-500">Rider: {o.deliveryPartner.name}</p>}
                           <p className="text-xs text-stone-500">{money(o.totalCents, cur)} · {o.paymentMethod.toLowerCase()} {o.paymentStatus.toLowerCase()}</p>
                           <div className="mt-2 flex flex-wrap gap-1.5">
-                            {actions(o).map((a) => <button key={a.to} className="btn-primary px-2.5 py-1.5 text-xs" disabled={move.isPending} onClick={() => move.mutate({ id: o.id, status: a.to })}>{a.label}</button>)}
+                            {actions(o).map((a) => <button key={a.to} className="btn-primary px-2.5 py-1.5 text-xs" disabled={move.isPending || (a.to === 'COMPLETED' && o.paymentStatus === 'UNPAID')} title={a.to === 'COMPLETED' && o.paymentStatus === 'UNPAID' ? 'Mark the order as paid first' : undefined} onClick={() => move.mutate({ id: o.id, status: a.to })}>{a.label}</button>)}
                             {o.paymentMethod === 'ONLINE' && o.paymentStatus === 'PAID' && <span className="self-center text-xs font-semibold text-green-700">Paid online</span>}
                             {canCancel && o.paymentMethod === 'ONLINE' && ['PAID', 'PARTIALLY_REFUNDED'].includes(o.paymentStatus) && <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => refund(o)}>Refund</button>}
-                            {o.paymentMethod === 'CASH' && o.paymentStatus === 'UNPAID' && me!.role !== 'KITCHEN' && <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => pay.mutate({ id: o.id, paymentStatus: 'PAID' })}>Mark paid</button>}
+                            {me!.role === 'WAITER' && ['NEW', 'ACCEPTED', 'PREPARING'].includes(o.status) && <span className="self-center text-xs text-stone-500">With the kitchen</span>}
+                          {me!.role === 'KITCHEN' && o.status === 'READY' && <span className="self-center text-xs font-semibold text-sky-700">Ready: waiting for service staff</span>}
+                          {o.paymentMethod === 'CASH' && o.paymentStatus === 'UNPAID' && me!.role !== 'KITCHEN' && (me!.role !== 'WAITER' || waiterCanMarkPaid(o)) && <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => pay.mutate({ id: o.id, paymentStatus: 'PAID' })}>Mark paid</button>}
                             {canCancel && ['NEW', 'ACCEPTED', 'PREPARING'].includes(o.status) && <button className="btn-ghost px-2.5 py-1.5 text-xs text-red-600" onClick={() => confirm(`Cancel order #${o.number}?`) && move.mutate({ id: o.id, status: 'CANCELLED' })}>Cancel</button>}
                           </div>
                         </motion.div>
@@ -274,6 +282,7 @@ function MenuPage() {
   const [recipeFor, setRecipeFor] = useState<any | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
   const [csv, setCsv] = useState('');
+  const [csvName, setCsvName] = useState('');
   const cur = r?.currency ?? 'INR';
   const refresh = () => { qc.invalidateQueries({ queryKey: ['cats'] }); qc.invalidateQueries({ queryKey: ['prods'] }); };
   const run = (fn: () => Promise<any>, ok?: string) => fn().then(() => { refresh(); ok && toast(ok); }).catch((e) => toast(errMsg(e), 'err'));
@@ -301,7 +310,7 @@ function MenuPage() {
               </div>
               {prods.data!.filter((p) => p.categoryId === c.id).map((p) => (
                 <div key={p.id} className="flex items-center justify-between gap-2 border-t border-stone-100 py-2 text-sm">
-                  <div className="min-w-0"><p className={`font-semibold ${p.available ? '' : 'text-stone-400 line-through'}`}>{p.name}</p><p className="truncate text-xs text-stone-500">{p.description}</p></div>
+                  <div className="flex min-w-0 items-center gap-3">{p.imageUrl && <img src={p.imageUrl} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-lg object-cover" />}<div className="min-w-0"><p className={`font-semibold ${p.available ? '' : 'text-stone-400 line-through'}`}>{p.name}</p><p className="truncate text-xs text-stone-500">{p.description}</p></div></div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <span className="mr-1 font-semibold">{money(p.discountPriceCents ?? p.priceCents, cur)}</span>
                     <button className="btn-ghost px-2 py-1 text-xs" onClick={() => run(() => api(`/products/${p.id}/availability`, { method: 'PATCH', body: { available: !p.available } }))}>{p.available ? 'Mark sold out' : 'Mark available'}</button>
@@ -321,8 +330,19 @@ function MenuPage() {
       <RecipeModal product={recipeFor} onClose={() => setRecipeFor(null)} />
       <Modal open={csvOpen} onClose={() => setCsvOpen(false)} title="Import menu from CSV">
         <p className="mb-2 text-sm text-stone-600">Columns: <code>category,name,description,price,available</code> (header row first).</p>
-        <textarea className="input font-mono" rows={8} value={csv} onChange={(e) => setCsv(e.target.value)} />
-        <button className="btn-primary mt-3 w-full" disabled={!csv.trim()} onClick={() => api<any>('/menu/import', { body: { csv } }).then((r) => { refresh(); toast(`Imported ${r.created} items${r.errors.length ? `, ${r.errors.length} skipped` : ''}`, r.errors.length ? 'err' : 'ok'); setCsvOpen(false); setCsv(''); }).catch((e) => toast(errMsg(e), 'err'))}>Import</button>
+        <label className="btn-ghost mb-2 w-full cursor-pointer justify-center">
+          <Upload size={16} /> Choose a CSV file
+          <input type="file" accept=".csv,text/csv" className="sr-only" onChange={async (e) => {
+            const file = e.target.files?.[0]; e.target.value = ''; // reset so the same file can be chosen again
+            if (!file) return;
+            if (file.size > 500_000) return toast('That file is too large (limit 500 KB). Split it into smaller files.', 'err');
+            setCsv((await file.text()).replace(/^﻿/, '')); // Excel adds a byte-order mark
+            setCsvName(file.name);
+          }} />
+        </label>
+        {csvName && <p className="mb-2 text-xs text-stone-500">Loaded <b>{csvName}</b>. Check it below, then press Import.</p>}
+        <textarea className="input font-mono" rows={8} placeholder="…or paste CSV text here" value={csv} onChange={(e) => { setCsv(e.target.value); setCsvName(''); }} />
+        <button className="btn-primary mt-3 w-full" disabled={!csv.trim()} onClick={() => api<any>('/menu/import', { body: { csv } }).then((r) => { refresh(); toast(`Imported ${r.created} items${r.errors.length ? `, ${r.errors.length} skipped` : ''}`, r.errors.length ? 'err' : 'ok'); setCsvOpen(false); setCsv(''); setCsvName(''); }).catch((e) => toast(errMsg(e), 'err'))}>Import</button>
       </Modal>
     </Page>
   );
@@ -347,6 +367,7 @@ function ProductEditor({ product, cats, cur, onClose, onSaved }: { product: any 
   const [p, setP] = useState<any>(emptyProduct);
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   useEffect(() => { if (product) { setP(product); setErr(null); } }, [product]);
   const save = async () => {
     setBusy(true); setErr(null);
@@ -365,13 +386,33 @@ function ProductEditor({ product, cats, cur, onClose, onSaved }: { product: any 
         <Field label="Description"><textarea className="input" rows={2} value={p.description} onChange={(e) => setP({ ...p, description: e.target.value })} /></Field>
         <Field label="Category"><select className="input" value={p.categoryId} onChange={(e) => setP({ ...p, categoryId: e.target.value })}>{cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
         <div className="grid grid-cols-2 gap-3">{priceField('priceCents', `Price (${cur})`)}{priceField('discountPriceCents', 'Discounted price')}</div>
-        <Field label="Image URL" error={fieldErrors(err, 'imageUrl')}><input className="input" placeholder="https://…" value={p.imageUrl} onChange={(e) => setP({ ...p, imageUrl: e.target.value })} /></Field>
+        <div>
+          <p className="label">Picture</p>
+          <div className="flex items-center gap-3">
+            {p.imageUrl ? <img src={p.imageUrl} alt="" className="h-20 w-20 rounded-xl object-cover" /> : <div className="grid h-20 w-20 place-items-center rounded-xl border border-dashed border-stone-300 text-stone-400"><ImageIcon size={24} /></div>}
+            <div className="flex flex-wrap gap-2">
+              <label className="btn-ghost cursor-pointer px-3 py-1.5 text-sm">
+                <Upload size={15} /> {uploading ? 'Uploading…' : p.imageUrl ? 'Replace picture' : 'Upload picture'}
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={uploading} onChange={async (e) => {
+                  const file = e.target.files?.[0]; e.target.value = '';
+                  if (!file) return;
+                  setUploading(true); setErr(null);
+                  try { const url = await uploadImage(await shrinkImage(file)); setP((cur: any) => ({ ...cur, imageUrl: url })); } catch (x) { setErr(x); } finally { setUploading(false); }
+                }} />
+              </label>
+              {p.imageUrl && <button type="button" className="btn-ghost px-3 py-1.5 text-sm text-red-600" onClick={() => setP({ ...p, imageUrl: '' })}>Remove</button>}
+            </div>
+          </div>
+          <p className="mt-1 text-xs text-stone-500">JPEG, PNG or WebP. Large photos are shrunk automatically. The picture is saved with the item.</p>
+          <details className="mt-1 text-xs text-stone-500"><summary className="cursor-pointer">Or use a link to a picture</summary>
+            <Field label="Image link" error={fieldErrors(err, 'imageUrl')}><input className="input" placeholder="https://…" value={p.imageUrl?.startsWith('/api/') ? '' : p.imageUrl} onChange={(e) => setP({ ...p, imageUrl: e.target.value })} /></Field></details>
+        </div>
         <div className="flex flex-wrap gap-3 text-sm">{[['VEG', 'Vegetarian'], ['VEGAN', 'Vegan'], ['NON_VEG', 'Non-veg'], ['GLUTEN_FREE', 'Gluten free']].map(([v, l]) => <label key={v}><input type="checkbox" className="mr-1.5" checked={p.dietary.includes(v)} onChange={() => toggle('dietary', v)} />{l}</label>)}</div>
         <Field label="Allergens (comma separated)"><input className="input" value={p.allergens.join(', ')} onChange={(e) => setP({ ...p, allergens: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) })} /></Field>
         <OptionEditor label="Sizes / variants (price is added)" items={p.variants} onChange={(v) => setP({ ...p, variants: v })} cur={cur} />
         <OptionEditor label="Add-ons" items={p.addons} onChange={(v) => setP({ ...p, addons: v })} cur={cur} />
-        {!!err && !fieldErrors(err, 'name') && <p className="err" role="alert">{errMsg(err)}</p>}
-        <button className="btn-primary w-full" disabled={busy || !p.name.trim()} onClick={save}>{busy ? 'Saving…' : 'Save item'}</button>
+        {!!err && !fieldErrors(err, 'name') && !fieldErrors(err, 'imageUrl') && <p className="err" role="alert">{errMsg(err)}</p>}
+        <button className="btn-primary w-full" disabled={busy || uploading || !p.name.trim()} onClick={save}>{busy ? 'Saving…' : 'Save item'}</button>
       </div>
     </Modal>
   );
@@ -542,6 +583,7 @@ function StaffPage() {
         <div className="sm:col-span-4"><button className="btn-primary">Add staff member</button></div>
       </form>
       {isLoading ? <Skeleton /> : data!.map((u) => <div key={u.id} className="card mb-2 flex items-center justify-between"><div><p className="font-semibold">{u.name} <span className="text-xs text-stone-500">{u.role}</span></p><p className="text-sm text-stone-500">{u.email}{!u.active && ' · deactivated'}</p></div>
+        {u.role !== 'OWNER' && <select className="input mr-2 w-auto py-1.5 text-xs" aria-label={`Role for ${u.name}`} value={u.role} onChange={(e) => api(`/staff/${u.id}`, { method: 'PATCH', body: { role: e.target.value } }).then(refresh).catch((x) => toast(errMsg(x), 'err'))}><option value="MANAGER">Manager</option><option value="KITCHEN">Kitchen</option><option value="WAITER">Waiter</option></select>}
         {u.role !== 'OWNER' && outletList.length > 1 && <select className="input mr-2 w-auto py-1.5 text-xs" aria-label={`Outlet for ${u.name}`} value={u.restaurantId ?? ''} onChange={(e) => api(`/staff/${u.id}`, { method: 'PATCH', body: { restaurantId: e.target.value } }).then(() => { refresh(); toast(`${u.name} moved to ${outletName(e.target.value)}`); }).catch((x) => toast(errMsg(x), 'err'))}>{outletList.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>}
         {u.role !== 'OWNER' && u.mfaEnabled && <button className="btn-ghost mr-2 px-3 py-1.5 text-xs" title="For a staff member who lost their phone" onClick={() => confirm(`Reset two-step verification for ${u.name}? They will be signed out and can set it up again.`) && api(`/staff/${u.id}/reset-mfa`, { body: {} }).then(() => { refresh(); toast('Two-step verification reset'); }).catch((x) => toast(errMsg(x), 'err'))}>Reset 2FA</button>}
         {u.role !== 'OWNER' && <button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => api(`/staff/${u.id}`, { method: 'PATCH', body: { active: !u.active } }).then(refresh)}>{u.active ? 'Deactivate' : 'Reactivate'}</button>}</div>)}

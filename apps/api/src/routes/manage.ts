@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import QRCode from 'qrcode';
 import { HttpError, env, parse, prisma } from '../lib/core';
@@ -94,7 +95,7 @@ const productSchema = z.object({
   description: z.string().max(600).default(''),
   priceCents: z.number().int().min(0),
   discountPriceCents: z.number().int().min(0).nullable().optional(),
-  imageUrl: z.string().url().max(500).refine((u) => /^https?:\/\//i.test(u), 'Use an http(s) link').nullable().optional().or(z.literal('').transform(() => null)),
+  imageUrl: z.string().max(500).refine(okImageRef, 'Use an uploaded image or an http(s) link').nullable().optional().or(z.literal('').transform(() => null)),
   available: z.boolean().default(true),
   dietary: z.array(z.enum(['VEG', 'VEGAN', 'NON_VEG', 'GLUTEN_FREE'])).default([]),
   allergens: z.array(z.string().max(30)).max(14).default([]),
@@ -104,6 +105,42 @@ const productSchema = z.object({
 }).refine((p) => p.discountPriceCents == null || p.discountPriceCents <= p.priceCents, {
   message: 'Discounted price cannot exceed the price', path: ['discountPriceCents'],
 });
+
+const IMAGE_PATH = /^\/api\/public\/images\/([a-z0-9]{20,40})$/;
+function okImageRef(u: string): boolean {
+  if (IMAGE_PATH.test(u)) return true;
+  try { return /^https?:$/.test(new URL(u).protocol); } catch { return false; }
+}
+/** Deletes an uploaded photo once no menu item uses it any more (copied menus and duplicated items share one photo). */
+async function releaseImage(url: string | null | undefined, restaurantId: string) {
+  const m = url ? IMAGE_PATH.exec(url) : null;
+  if (!m || (await prisma.product.count({ where: { imageUrl: url } }))) return;
+  await prisma.menuImage.deleteMany({ where: { id: m[1], restaurantId } });
+}
+
+/** What the first bytes say the file is. The declared content type is never trusted. */
+function sniffImage(b: Buffer): 'image/jpeg' | 'image/png' | 'image/webp' | null {
+  if (b.length > 12 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b.length > 12 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (b.length > 12 && b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  return null;
+}
+const MAX_IMAGES_PER_RESTAURANT = Number(process.env.MAX_MENU_IMAGES ?? 300);
+const imageLimit = rateLimit({
+  windowMs: 60_000, limit: Number(process.env.IMAGE_UPLOAD_LIMIT ?? 40), standardHeaders: true, legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id ?? req.ip ?? 'anon', message: { error: { code: 'rate_limited', message: 'Too many uploads. Try again in a minute.' } },
+});
+
+manage.post('/images', requireRole(...MANAGE), imageLimit, wrap(async (req, res) => {
+  const body = req.body;
+  if (!Buffer.isBuffer(body) || !body.length) throw new HttpError(400, 'Send the picture as a JPEG, PNG or WebP file', 'validation');
+  const contentType = sniffImage(body);
+  if (!contentType) throw new HttpError(400, 'Only JPEG, PNG or WebP pictures are accepted', 'validation');
+  if ((await prisma.menuImage.count({ where: { restaurantId: rid(req) } })) >= MAX_IMAGES_PER_RESTAURANT)
+    throw new HttpError(409, 'You have reached the picture limit. Delete menu items you no longer use, or remove their pictures.', 'limit_reached');
+  const img = await prisma.menuImage.create({ data: { restaurantId: rid(req), contentType, data: body }, select: { id: true } });
+  res.status(201).json({ url: `/api/public/images/${img.id}` });
+}));
 
 async function assertCategory(restaurantId: string, categoryId: string) {
   if (!(await prisma.category.count({ where: { id: categoryId, restaurantId } })))
@@ -124,8 +161,10 @@ manage.post('/products', requireRole(...MANAGE), wrap(async (req, res) => {
 manage.put('/products/:id', requireRole(...MANAGE), wrap(async (req, res) => {
   const d = parse(productSchema, req.body);
   await assertCategory(rid(req), d.categoryId);
+  const before = await prisma.product.findFirst({ where: { id: req.params.id, restaurantId: rid(req) }, select: { imageUrl: true } });
   const r = await prisma.product.updateMany({ where: { id: req.params.id, restaurantId: rid(req) }, data: { ...d, imageUrl: d.imageUrl ?? null } });
   if (!r.count) throw new HttpError(404, 'Not found', 'not_found');
+  if (before?.imageUrl && before.imageUrl !== (d.imageUrl ?? null)) await releaseImage(before.imageUrl, rid(req));
   res.json(await prisma.product.findUnique({ where: { id: req.params.id } }));
 }));
 
@@ -145,8 +184,10 @@ manage.post('/products/:id/duplicate', requireRole(...MANAGE), wrap(async (req, 
 }));
 
 manage.delete('/products/:id', requireRole(...MANAGE), wrap(async (req, res) => {
+  const before = await prisma.product.findFirst({ where: { id: req.params.id, restaurantId: rid(req) }, select: { imageUrl: true } });
   const r = await prisma.product.deleteMany({ where: { id: req.params.id, restaurantId: rid(req) } });
   if (!r.count) throw new HttpError(404, 'Not found', 'not_found');
+  await releaseImage(before?.imageUrl, rid(req));
   res.status(204).end();
 }));
 

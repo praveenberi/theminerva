@@ -29,7 +29,7 @@ export interface AuthUser {
 }
 
 // Pin the algorithm (never trust the token's own header) and bind tokens to this service.
-const JWT_BINDING = { issuer: 'tablely-api', audience: 'tablely-web' };
+const JWT_BINDING = { issuer: 'theminerva-api', audience: 'theminerva-web' };
 export const signAccess = (u: AuthUser) => jwt.sign({ id: u.id, role: u.role, tenantId: u.tenantId, restaurantId: u.restaurantId, iatMs: Date.now() }, env.jwtSecret, { ...JWT_BINDING, algorithm: 'HS256', expiresIn: '15m' });
 export const verifyAccess = (t: string) => jwt.verify(t, env.jwtSecret, { ...JWT_BINDING, algorithms: ['HS256'] }) as AuthUser;
 export const newRefreshToken = () => crypto.randomBytes(48).toString('base64url');
@@ -75,9 +75,9 @@ export function assertProductionConfig() {
 }
 
 /** Issued after a correct password when MFA is on. Different audience from access tokens, so it cannot be used as one. */
-export const signMfaToken = (userId: string) => jwt.sign({ uid: userId, purpose: 'mfa' }, env.jwtSecret, { issuer: 'tablely-api', audience: 'tablely-mfa', algorithm: 'HS256', expiresIn: '5m' });
+export const signMfaToken = (userId: string) => jwt.sign({ uid: userId, purpose: 'mfa' }, env.jwtSecret, { issuer: 'theminerva-api', audience: 'theminerva-mfa', algorithm: 'HS256', expiresIn: '5m' });
 export function verifyMfaToken(t: string): string {
-  const c = jwt.verify(t, env.jwtSecret, { issuer: 'tablely-api', audience: 'tablely-mfa', algorithms: ['HS256'] }) as { uid: string; purpose: string };
+  const c = jwt.verify(t, env.jwtSecret, { issuer: 'theminerva-api', audience: 'theminerva-mfa', algorithms: ['HS256'] }) as { uid: string; purpose: string };
   if (c.purpose !== 'mfa') throw new Error('wrong token');
   return c.uid;
 }

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Build context is the repository root:  docker build -f apps/web/Dockerfile -t tablely-web .
+# Build context is the repository root:  docker build -f apps/web/Dockerfile -t theminerva-web .
 
 FROM node:20-bookworm-slim AS build
 WORKDIR /app

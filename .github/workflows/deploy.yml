@@ -38,7 +38,7 @@ jobs:
           context: .
           file: apps/api/Dockerfile
           push: true
-          tags: ghcr.io/${{ steps.vars.outputs.owner }}/tablely-api:${{ steps.vars.outputs.tag }}
+          tags: ghcr.io/${{ steps.vars.outputs.owner }}/theminerva-api:${{ steps.vars.outputs.tag }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,scope=api,mode=max
       - name: Publish web image
@@ -47,7 +47,7 @@ jobs:
           context: .
           file: apps/web/Dockerfile
           push: true
-          tags: ghcr.io/${{ steps.vars.outputs.owner }}/tablely-web:${{ steps.vars.outputs.tag }}
+          tags: ghcr.io/${{ steps.vars.outputs.owner }}/theminerva-web:${{ steps.vars.outputs.tag }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
 
@@ -71,4 +71,4 @@ jobs:
         env:
           TAG: ${{ needs.images.outputs.tag }}
           TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
-        run: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$TARGET" "cd /opt/tablely && ./deploy/remote-deploy.sh '$TAG'"
+        run: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$TARGET" "cd /opt/theminerva && ./deploy/remote-deploy.sh '$TAG'"

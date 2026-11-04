@@ -58,5 +58,5 @@ export function verifyTotp(secretB32: string, code: string, nowMs = Date.now()):
   return hit;
 }
 
-export const otpauthUri = (secretB32: string, account: string, issuer = 'Tablely') =>
+export const otpauthUri = (secretB32: string, account: string, issuer = 'The Minerva') =>
   `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(account)}?secret=${secretB32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=${PERIOD}`;

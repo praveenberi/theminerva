@@ -4,7 +4,7 @@
 #   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 #
 # Only Caddy publishes ports. The database and API are reachable only inside the compose network.
-name: tablely-prod
+name: theminerva-prod
 
 x-logging: &logging
   driver: json-file
@@ -29,7 +29,7 @@ services:
 
   # One-off job: applies database migrations, then exits. The API starts only after it succeeds.
   migrate:
-    image: ${API_IMAGE:-tablely-api:local}
+    image: ${API_IMAGE:-theminerva-api:local}
     build: { context: ., dockerfile: apps/api/Dockerfile }
     restart: "no"
     command: ["npx", "prisma", "migrate", "deploy"]
@@ -40,7 +40,7 @@ services:
     logging: *logging
 
   api:
-    image: ${API_IMAGE:-tablely-api:local}
+    image: ${API_IMAGE:-theminerva-api:local}
     build: { context: ., dockerfile: apps/api/Dockerfile }
     restart: unless-stopped
     stop_grace_period: 30s # time to finish in-flight requests on deploy (the API drains on SIGTERM)
@@ -74,7 +74,7 @@ services:
     logging: *logging
 
   web:
-    image: ${WEB_IMAGE:-tablely-web:local}
+    image: ${WEB_IMAGE:-theminerva-web:local}
     build: { context: ., dockerfile: apps/web/Dockerfile }
     restart: unless-stopped
     security_opt: ["no-new-privileges:true"]

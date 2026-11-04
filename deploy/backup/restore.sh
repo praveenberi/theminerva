@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016 # single quotes are deliberate: the $VARIABLES must expand inside the database container, not on this host
 # Restores a dump into a database, by default a SCRATCH one so you can check a backup without touching production.
-#   deploy/backup/restore.sh backups/tablely-2026....dump                 -> restores into database "restore_check"
-#   deploy/backup/restore.sh backups/tablely-2026....dump my_scratch_db   -> restores into "my_scratch_db"
+#   deploy/backup/restore.sh backups/theminerva-2026....dump                 -> restores into database "restore_check"
+#   deploy/backup/restore.sh backups/theminerva-2026....dump my_scratch_db   -> restores into "my_scratch_db"
 # Restoring over the live database is deliberately a manual act: see "Disaster recovery" in DEPLOY.md.
 set -euo pipefail
 cd "$(dirname "$0")/../.."

@@ -14,8 +14,8 @@ async function main() {
   }
   const hash = await bcrypt.hash('Password123!', 12);
   await prisma.user.upsert({
-    where: { email: 'admin@tablely.test' }, update: {},
-    create: { email: 'admin@tablely.test', name: 'Platform Admin', role: 'SUPER_ADMIN', passwordHash: hash, emailVerifiedAt: new Date() },
+    where: { email: 'admin@theminerva.test' }, update: {},
+    create: { email: 'admin@theminerva.test', name: 'Platform Admin', role: 'SUPER_ADMIN', passwordHash: hash, emailVerifiedAt: new Date() },
   });
   if (await prisma.restaurant.findUnique({ where: { slug: 'the-minerva' } })) return console.log('Seed already applied');
 
@@ -65,7 +65,7 @@ async function main() {
   }
   for (let i = 1; i <= 6; i++) await prisma.diningTable.create({ data: { restaurantId: r.id, label: `T${i}`, capacity: i <= 4 ? 4 : 6 } });
   await prisma.coupon.create({ data: { restaurantId: r.id, code: 'WELCOME10', type: 'PERCENT', value: 10 } });
-  console.log('Seeded. Logins (password Password123!): owner@demo.test, manager@demo.test, kitchen@demo.test, waiter@demo.test, admin@tablely.test');
+  console.log('Seeded. Logins (password Password123!): owner@demo.test, manager@demo.test, kitchen@demo.test, waiter@demo.test, admin@theminerva.test');
 }
 
 main().finally(() => prisma.$disconnect());

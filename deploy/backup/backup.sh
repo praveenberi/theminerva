@@ -14,7 +14,7 @@ compose() { docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"; }
 
 mkdir -p "$DIR"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-out="$DIR/tablely-$stamp.dump"
+out="$DIR/theminerva-$stamp.dump"
 
 # custom format: compressed, and restorable table by table. Credentials come from the container's own environment.
 compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --no-owner' > "$out.partial"
@@ -27,5 +27,5 @@ if ! compose exec -T db pg_restore --list < "$out.partial" > /dev/null; then
 fi
 mv "$out.partial" "$out"
 chmod 600 "$out"
-find "$DIR" -name 'tablely-*.dump' -mtime +"$KEEP_DAYS" -delete
+find "$DIR" -name 'theminerva-*.dump' -mtime +"$KEEP_DAYS" -delete
 echo "$out ($(du -h "$out" | cut -f1))"

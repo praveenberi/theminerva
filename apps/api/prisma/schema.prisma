@@ -193,6 +193,7 @@ model Restaurant {
   paymentAccounts   PaymentAccount[]
 
   @@index([tenantId])
+  menuImages MenuImage[]
 }
 
 model Category {
@@ -305,6 +306,18 @@ model Order {
   @@unique([restaurantId, number])
   @@index([restaurantId, status])
   @@index([restaurantId, createdAt])
+}
+
+/// Photos uploaded for menu items. Kept in the database so backups, restores and several API servers all see the same files.
+model MenuImage {
+  id           String     @id @default(cuid())
+  restaurantId String
+  contentType  String
+  data         Bytes
+  createdAt    DateTime   @default(now())
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
 }
 
 model OrderItem {

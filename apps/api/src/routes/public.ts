@@ -68,7 +68,7 @@ pub.post('/unsubscribe/:token', wrap(async (req, res) => {
 pub.get('/orders/track/:code', wrap(async (req, res) => {
   const o = await prisma.order.findUnique({
     where: { trackingCode: req.params.code },
-    include: { items: true, history: { orderBy: { createdAt: 'asc' } }, restaurant: { select: { name: true, currency: true, tenantId: true, loyaltyEnabled: true, loyaltyConfig: true } }, payments: { where: { status: 'PENDING' }, take: 1 }, deliveryPartner: { select: { name: true, phone: true } } },
+    include: { items: true, table: { select: { label: true } }, history: { orderBy: { createdAt: 'asc' } }, restaurant: { select: { slug: true, name: true, currency: true, tenantId: true, loyaltyEnabled: true, loyaltyConfig: true } }, payments: { where: { status: 'PENDING' }, take: 1 }, deliveryPartner: { select: { name: true, phone: true } } },
   });
   if (!o) throw new HttpError(404, 'Order not found', 'not_found');
   let rewards: object | null = null;
@@ -93,11 +93,22 @@ pub.get('/orders/track/:code', wrap(async (req, res) => {
     etaAt: o.etaMinutes ? new Date(o.createdAt.getTime() + o.etaMinutes * 60_000) : null,
     // the rider's contact is only shared once the order is on its way
     rider: o.status === 'OUT_FOR_DELIVERY' && o.deliveryPartner ? o.deliveryPartner : null,
-    number: o.number, status: o.status, type: o.type, restaurant: o.restaurant, totalCents: o.totalCents,
+    number: o.number, status: o.status, type: o.type, table: o.table?.label ?? null, restaurant: o.restaurant, totalCents: o.totalCents,
     paymentMethod: o.paymentMethod, paymentStatus: o.paymentStatus, createdAt: o.createdAt,
     items: o.items.map((i) => ({ name: i.name, quantity: i.quantity, unitPriceCents: i.unitPriceCents })),
     history: o.history.map((h) => ({ status: h.status, at: h.createdAt })),
   });
+}));
+
+// Menu photos. The id is unguessable and the bytes never change, so browsers and CDNs may keep them for a year.
+pub.get('/images/:id', wrap(async (req, res) => {
+  const img = await prisma.menuImage.findUnique({ where: { id: req.params.id } });
+  if (!img) throw new HttpError(404, 'Not found', 'not_found');
+  res.set({
+    'Content-Type': img.contentType, 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'; sandbox", 'Cross-Origin-Resource-Policy': 'cross-origin',
+  });
+  res.send(Buffer.from(img.data));
 }));
 
 pub.get('/:slug', wrap(async (req, res) => {
@@ -259,13 +270,12 @@ pub.post('/:slug/orders', writeLimiter, wrap(async (req, res) => {
     deliveryFeeCents: delivery.feeCents, isDelivery: d.type === 'DELIVERY',
   }, rule, d.tipCents);
 
-  const { order, referral } = await prisma.$transaction(async (tx) => {
+  const { order, referral, merged } = await prisma.$transaction(async (tx) => {
     if (coupon) {
       // atomic redemption: fails if the limit was reached by a concurrent order
       const ok = await tx.$executeRaw`UPDATE "Coupon" SET "usedCount" = "usedCount" + 1 WHERE id = ${coupon.id} AND ("usageLimit" IS NULL OR "usedCount" < "usageLimit")`;
       if (!ok) throw new HttpError(400, 'This coupon is fully redeemed', 'coupon_invalid');
     }
-    const { orderCounter } = await tx.restaurant.update({ where: { id: r.id }, data: { orderCounter: { increment: 1 } }, select: { orderCounter: true } });
     const existing = await tx.customer.findUnique({ where: { restaurantId_phone: { restaurantId: r.id, phone: d.customerPhone } } });
     const customer = existing
       ? await tx.customer.update({
@@ -297,6 +307,40 @@ pub.post('/:slug/orders', writeLimiter, wrap(async (req, res) => {
       }
     }
 
+    // More food for a table that already has an unpaid cash order in progress goes onto that order (one bill per table visit)
+    // instead of opening a new one. Paid, online, finished and cancelled orders are never reopened.
+    if (tableId && d.paymentMethod === 'CASH') {
+      await tx.$queryRaw`SELECT id FROM "DiningTable" WHERE id = ${tableId} FOR UPDATE`; // one writer per table, so two phones ordering at once end up on the same bill
+      const [open] = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Order" WHERE "restaurantId" = ${r.id} AND "tableId" = ${tableId} AND type::text = 'DINE_IN'
+        AND "paymentMethod" = 'CASH' AND "paymentStatus"::text = 'UNPAID' AND status::text IN ('NEW', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED') ORDER BY "createdAt" DESC LIMIT 1 FOR UPDATE`;
+      if (open) {
+        const cur = await tx.order.findUniqueOrThrow({ where: { id: open.id } });
+        // the same dish (same size, add-ons and note) joins its existing bill line instead of repeating; the extra portions still need cooking
+        const have = await tx.orderItem.findMany({ where: { orderId: cur.id } });
+        const fresh: typeof lines = [];
+        for (const l of lines) {
+          const same = l.productId ? have.find((h) => h.productId === l.productId && h.unitPriceCents === l.unitPriceCents && (h.notes ?? '') === (l.notes ?? '') && JSON.stringify(h.options) === JSON.stringify(l.options)) : undefined;
+          if (same) {
+            same.quantity += l.quantity;
+            await tx.orderItem.update({ where: { id: same.id }, data: { quantity: { increment: l.quantity }, prepDone: false } });
+          } else fresh.push(l);
+        }
+        if (fresh.length) await tx.orderItem.createMany({ data: fresh.map((l) => ({ ...l, orderId: cur.id, options: l.options as Prisma.InputJsonValue })) });
+        const t = computeTotals(cur.subtotalCents + subtotal, {
+          taxPercent: Number(r.taxPercent), serviceChargePercent: Number(r.serviceChargePercent), deliveryFeeCents: 0, isDelivery: false,
+        }, { type: 'FIXED', value: cur.discountCents + (applied?.discountCents ?? 0), minSubtotalCents: 0 }, cur.tipCents + d.tipCents);
+        // anything beyond NEW goes back to NEW, so the kitchen sees the order again, accepts the addition and cooks it
+        const reopen = cur.status !== 'NEW';
+        const updated = await tx.order.update({
+          where: { id: cur.id },
+          data: { ...t, couponCode: cur.couponCode ?? coupon?.code ?? null, notes: d.notes ? [cur.notes, d.notes].filter(Boolean).join(' · ') : cur.notes, ...(reopen ? { status: 'NEW' } : {}) },
+        });
+        if (reopen) await tx.orderStatusHistory.create({ data: { orderId: cur.id, status: 'NEW' } });
+        return { order: updated, referral, merged: true };
+      }
+    }
+
+    const { orderCounter } = await tx.restaurant.update({ where: { id: r.id }, data: { orderCounter: { increment: 1 } }, select: { orderCounter: true } });
     const order = await tx.order.create({
       data: {
         restaurantId: r.id, number: orderCounter, trackingCode: crypto.randomBytes(9).toString('base64url'),
@@ -309,7 +353,7 @@ pub.post('/:slug/orders', writeLimiter, wrap(async (req, res) => {
         history: { create: { status: d.paymentMethod === 'ONLINE' ? 'PENDING_PAYMENT' : 'NEW' } },
       },
     });
-    return { order, referral };
+    return { order, referral, merged: false };
   });
   let payUrl: string | undefined;
   if (d.paymentMethod === 'ONLINE') {
@@ -325,7 +369,7 @@ pub.post('/:slug/orders', writeLimiter, wrap(async (req, res) => {
       throw e instanceof HttpError ? e : new HttpError(502, 'Could not start payment', 'provider_error');
     }
   }
-  res.status(201).json({ trackingCode: order.trackingCode, number: order.number, totalCents: order.totalCents, discountCents: order.discountCents, referral, payUrl });
+  res.status(201).json({ trackingCode: order.trackingCode, number: order.number, totalCents: order.totalCents, discountCents: order.discountCents, referral, payUrl, merged });
 }));
 
 // ---------- reservations ----------

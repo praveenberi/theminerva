@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Build context is the repository root:  docker build -f apps/api/Dockerfile -t tablely-api .
+# Build context is the repository root:  docker build -f apps/api/Dockerfile -t theminerva-api .
 
 FROM node:20-bookworm-slim AS base
 # Prisma's query engine needs OpenSSL; CA certificates let the API call payment and email providers over HTTPS.

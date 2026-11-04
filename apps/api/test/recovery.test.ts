@@ -234,9 +234,9 @@ describe('two-factor authentication', () => {
     // the pass is not an access token, and a forged or expired one is refused
     expect((await request(app).get('/api/orders').set(bearer(r.body.mfaToken))).status).toBe(401);
     expect((await request(app).post('/api/auth/login/mfa').send({ mfaToken: 'junk-junk-junk', code: '123456' })).body.error.code).toBe('mfa_expired');
-    const expired = jwt.sign({ uid: c.id, purpose: 'mfa' }, process.env.JWT_SECRET!, { issuer: 'tablely-api', audience: 'tablely-mfa', expiresIn: -10 });
+    const expired = jwt.sign({ uid: c.id, purpose: 'mfa' }, process.env.JWT_SECRET!, { issuer: 'theminerva-api', audience: 'theminerva-mfa', expiresIn: -10 });
     expect((await request(app).post('/api/auth/login/mfa').send({ mfaToken: expired, code: totpAt(m.secret, Date.now()) })).body.error.code).toBe('mfa_expired');
-    const wrongAudience = jwt.sign({ uid: c.id, purpose: 'mfa' }, process.env.JWT_SECRET!, { issuer: 'tablely-api', audience: 'tablely-web' });
+    const wrongAudience = jwt.sign({ uid: c.id, purpose: 'mfa' }, process.env.JWT_SECRET!, { issuer: 'theminerva-api', audience: 'theminerva-web' });
     expect((await request(app).post('/api/auth/login/mfa').send({ mfaToken: wrongAudience, code: totpAt(m.secret, Date.now()) })).status).toBe(401);
 
     const code = await freshCode(m.secret, c.id);
@@ -368,7 +368,7 @@ describe('platform admin and lost devices', () => {
     expect((await request(app).post('/api/admin/reset-mfa').set(admin.auth).send({ email: admin.email })).status).toBe(404); // not your own
     expect((await request(app).post('/api/admin/reset-mfa').set(admin.auth).send({ email: `ghost-${uid}@example.com` })).status).toBe(404);
     expect(await prisma.auditLog.count({ where: { action: 'mfa.reset', actorId: { in: [owner.id, admin.id] } } })).toBe(2);
-    expect(mailsTo(owner.email).some((m) => m.text.includes('reset on your Tablely account'))).toBe(true);
+    expect(mailsTo(owner.email).some((m) => m.text.includes('reset on your account at The Minerva'))).toBe(true);
   });
 });
 

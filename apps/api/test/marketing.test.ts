@@ -56,6 +56,7 @@ describe('loyalty, referrals and promotions through the API', () => {
   const customer = async (phone: string) => (await request(app).get('/api/customers').set(auth())).body.find((c: any) => c.phone === phone);
   const complete = async (trackingCode: string) => {
     const o = (await request(app).get('/api/orders?pageSize=100').set(auth())).body.items.find((x: any) => x.trackingCode === trackingCode);
+    await request(app).patch(`/api/orders/${o.id}/payment`).set(auth()).send({ paymentStatus: 'PAID' });
     for (const s of ['ACCEPTED', 'PREPARING', 'READY', 'COMPLETED']) {
       const r = await request(app).patch(`/api/orders/${o.id}/status`).set(auth()).send({ status: s });
       expect(r.status).toBe(200);

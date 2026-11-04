@@ -106,6 +106,9 @@ describe('storefront order flow & tenant isolation', () => {
     const patch = (s: string, h = a.auth) => request(app).patch(`/api/orders/${o.id}/status`).set(h).send({ status: s });
     expect((await patch('COMPLETED')).status).toBe(409);
     for (const s of ['ACCEPTED', 'PREPARING', 'READY']) expect((await patch(s)).status).toBe(200);
+    expect((await patch('COMPLETED')).status).toBe(409); // nothing can be completed until it is paid
+    expect((await patch('COMPLETED')).body.error.code).toBe('payment_required');
+    expect((await request(app).patch(`/api/orders/${o.id}/payment`).set(a.auth).send({ paymentStatus: 'PAID' })).status).toBe(200);
     expect((await patch('COMPLETED')).status).toBe(200);
     expect((await patch('CANCELLED')).status).toBe(409);
     const track = await request(app).get(`/api/public/orders/track/${placed.body.trackingCode}`);

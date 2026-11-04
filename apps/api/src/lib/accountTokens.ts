@@ -27,15 +27,15 @@ export async function sendVerificationEmail(user: { id: string; email: string; n
   const raw = await createToken(user.id, 'EMAIL_VERIFY');
   if (!raw) return false;
   const link = webLink('/verify-email', { token: raw });
-  return sendMail(user.email, 'Confirm your email address', `Hi ${user.name.split(' ')[0]},\n\nConfirm your email address for Tablely:\n${link}\n\nThe link works once and expires in 24 hours. If you did not create an account, ignore this message.`);
+  return sendMail(user.email, 'Confirm your email address', `Hi ${user.name.split(' ')[0]},\n\nConfirm your email address for The Minerva:\n${link}\n\nThe link works once and expires in 24 hours. If you did not create an account, ignore this message.`);
 }
 
 export async function sendResetEmail(user: { id: string; email: string; name: string }) {
   const raw = await createToken(user.id, 'PASSWORD_RESET');
   if (!raw) return false;
   const link = webLink('/reset-password', { token: raw });
-  return sendMail(user.email, 'Reset your Tablely password', `Hi ${user.name.split(' ')[0]},\n\nSomeone (hopefully you) asked to reset your password:\n${link}\n\nThe link works once and expires in 30 minutes. If it was not you, ignore this message: your password has not changed.`);
+  return sendMail(user.email, 'Reset your password for The Minerva', `Hi ${user.name.split(' ')[0]},\n\nSomeone (hopefully you) asked to reset your password:\n${link}\n\nThe link works once and expires in 30 minutes. If it was not you, ignore this message: your password has not changed.`);
 }
 
 export const sendSecurityNotice = (to: string, what: string) =>
-  sendMail(to, 'Security notice for your Tablely account', `${what}\n\nIf this was not you, reset your password immediately and contact support.`);
+  sendMail(to, 'Security notice for your account at The Minerva', `${what}\n\nIf this was not you, reset your password immediately and contact support.`);

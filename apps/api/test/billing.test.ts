@@ -209,6 +209,7 @@ describe('subscriptions', () => {
       const list = await request(app).get('/api/orders').set(b.auth);
       expect(list.status).toBe(200); // staff can still see and finish orders
       const o = list.body.items[0];
+      await request(app).patch(`/api/orders/${o.id}/payment`).set(b.auth).send({ paymentStatus: 'PAID' });
       for (const st of ['ACCEPTED', 'PREPARING', 'READY', 'COMPLETED']) expect((await request(app).patch(`/api/orders/${o.id}/status`).set(b.auth).send({ status: st })).status).toBe(200);
       expect((await request(app).get('/api/billing').set(b.auth)).status).toBe(200); // and can always reach billing to pay
     });

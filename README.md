@@ -1,4 +1,4 @@
-# Tablely — restaurant ordering & management (working core)
+# The Minerva — restaurant ordering & management (working core)
 
 Multi-tenant restaurant SaaS: React + Vite + Tailwind + Motion frontend, Express + Prisma + PostgreSQL backend.
 This is **Phase 1–3 plus parts of 4–5 and 7** of the master spec — see "Status" for exactly what works.
@@ -19,7 +19,7 @@ npm run dev:web                    # http://localhost:5173
 Config lives in `apps/api/.env` (copy `.env.example`; set a real `JWT_SECRET`).
 
 Seeded logins (password `Password123!`): `owner@demo.test`, `manager@demo.test`, `kitchen@demo.test`,
-`waiter@demo.test`, `admin@tablely.test` (super admin). Demo storefront: `/r/the-minerva?table=T1`.
+`waiter@demo.test`, `admin@theminerva.test` (super admin). Demo storefront: `/r/the-minerva?table=T1`.
 
 ```bash
 npm test          # API unit + integration tests (needs the database up)
@@ -32,7 +32,8 @@ npm run build     # production builds of api and web
 - Registration, login, refresh-token rotation (httpOnly cookie), logout; owner-created staff accounts (tested)
 - Roles OWNER / MANAGER / KITCHEN / WAITER / SUPER_ADMIN enforced server-side; tenant isolation by restaurant id taken from the verified token (tested)
 - Restaurant settings, publish toggle, tax / service charge / delivery fee
-- Menu: categories (reorder, rename), items, sizes, add-ons, discounted price, dietary/allergens, availability, duplicate, CSV import/export
+- Menu: categories (reorder, rename), items, sizes, add-ons, discounted price, dietary/allergens, availability, duplicate, CSV import (paste or choose a file) and export
+- Menu pictures: upload a JPEG, PNG or WebP per item (shrunk in the browser to 900 px, checked on the server by file signature, max 1 MB, 300 per restaurant), shown in the menu list and on the customer menu. Stored in PostgreSQL so backups include them; served with a one-year cache.
 - Public mobile storefront: search, veg filter, product options, persistent cart, coupons, tip, dine-in / takeaway / delivery checkout
 - Server-side pricing (client totals ignored), atomic coupon redemption, per-restaurant order numbers (tested)
 - Order workflow NEW→…→COMPLETED with role limits, kanban board (polls every 5 s), customer tracking page, mark-paid (tested)
@@ -55,7 +56,7 @@ npm run build     # production builds of api and web
 **Not built yet (so don't treat these as available):**
 - Live Stripe/Razorpay verification (adapters written, never run against the real APIs), UPI intents, split payments, settlement reports
 - WebSockets/real-time push (boards and kitchen screen poll every 4–5 s), split bills, waiter calls
-- Image upload / S3 / CDN (menu images are URLs), custom domains, multi-language, Google Reviews
+- S3 / CDN for pictures (menu pictures are stored in the database), custom domains, multi-language, Google Reviews
 - Purchase orders, shifts/attendance, wallet-style cashback
 - Customer feedback/reviews, inbound WhatsApp (e.g. STOP replies), scheduled/recurring campaigns, AI features, feature flags, support tickets, scheduled/emailed reports
 - Redis/BullMQ, S3/CDN, ECS/Kubernetes manifests (the compose stack is tested; other platforms are not), Swagger docs, Playwright E2E tests, error-tracking/metrics

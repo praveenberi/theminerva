@@ -128,6 +128,8 @@ describe('delivery', () => {
     expect((await st('OUT_FOR_DELIVERY')).status).toBe(200);
     t = await request(app).get(`/api/public/orders/track/${o.body.trackingCode}`);
     expect(t.body.rider).toEqual({ name: 'Ravi', phone: '+919111111111' });
+    expect((await st('COMPLETED')).status).toBe(409); // cash on delivery: payment must be recorded first
+    expect((await request(app).patch(`/api/orders/${order.id}/payment`).set(a.auth).send({ paymentStatus: 'PAID' })).status).toBe(200);
     expect((await st('COMPLETED')).status).toBe(200);
   });
 
