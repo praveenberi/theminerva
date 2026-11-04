@@ -1,0 +1,74 @@
+name: Deploy
+
+# Push a tag like v1.2.0 (or run manually) to build images, publish them and roll them out to the server.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false # never interrupt a deploy that is half way through
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: vars
+        run: |
+          echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: ghcr.io/${{ steps.vars.outputs.owner }}/tablely-api:${{ steps.vars.outputs.tag }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - name: Publish web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: ghcr.io/${{ steps.vars.outputs.owner }}/tablely-web:${{ steps.vars.outputs.tag }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  deploy:
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Create a GitHub "production" environment with required reviewers to make every deploy wait for a human approval.
+    environment: production
+    steps:
+      - name: Prepare SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Roll out on the server
+        env:
+          TAG: ${{ needs.images.outputs.tag }}
+          TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+        run: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$TARGET" "cd /opt/tablely && ./deploy/remote-deploy.sh '$TAG'"

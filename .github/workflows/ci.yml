@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tablely
+          POSTGRES_PASSWORD: tablely
+          POSTGRES_DB: tablely
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tablely -d tablely"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://tablely:tablely@localhost:5432/tablely
+      JWT_SECRET: ci-only-secret-never-used-anywhere-else-0123456789abcdef
+      WEB_ORIGIN: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Apply migrations to an empty database
+        working-directory: apps/api
+        run: npx prisma migrate deploy
+
+      - name: Migrations must reproduce schema.prisma exactly
+        working-directory: apps/api
+        run: |
+          PGPASSWORD=tablely psql -h localhost -U tablely -d tablely -c 'CREATE DATABASE shadow'
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url postgresql://tablely:tablely@localhost:5432/shadow \
+            --exit-code
+
+      - name: API type-check
+        working-directory: apps/api
+        run: npx tsc --noEmit
+      - name: API tests
+        run: npm test
+      - name: Web type-check and build
+        run: npm run build --workspace=web
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Full report (informational)
+        run: npm audit --omit=dev || true
+      # Fails the build on critical advisories. Known accepted items (zod, react-router) are tracked in SECURITY.md R-02/R-03.
+      - name: Fail on critical vulnerabilities
+        run: npm audit --omit=dev --audit-level=critical
+
+  images:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max

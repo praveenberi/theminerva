@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tablely
+      POSTGRES_PASSWORD: tablely
+      POSTGRES_DB: tablely
+    ports: ["127.0.0.1:5433:5432"] # localhost only: this database has a well-known development password
+    volumes: [pgdata:/var/lib/postgresql/data]
+volumes:
+  pgdata:

@@ -1,0 +1,14 @@
+{
+  "name": "tablely",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "db:up": "docker compose up -d db",
+    "db:migrate": "npm run -w api prisma:migrate",
+    "db:seed": "npm run -w api seed",
+    "dev:api": "npm run -w api dev",
+    "dev:web": "npm run -w web dev",
+    "build": "npm run -w api build && npm run -w web build",
+    "test": "npm run -w api test"
+  }
+}
