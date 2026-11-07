@@ -1,23 +1,19 @@
 import { createApp } from './app';
 import { assertProductionConfig, env, prisma } from './lib/core';
-import { issueBirthdayVouchers } from './lib/loyalty';
-import { runBilling } from './lib/billing';
+import { billingTick, birthdays } from './lib/jobs';
 
 assertProductionConfig(); // refuse to start on a public server with development settings
 const server = createApp().listen(env.port, () => console.log(JSON.stringify({ event: 'api.listening', port: env.port })));
 
 // Daily birthday vouchers. Idempotent (one per customer per year), so running hourly and after restarts is safe.
-async function birthdays() {
-  const outlets = await prisma.restaurant.findMany({ where: { loyaltyEnabled: true }, select: { id: true } });
-  for (const o of outlets) await issueBirthdayVouchers(o.id).catch((e) => console.error('birthday run failed', o.id, e));
-}
-void birthdays();
-const birthdayTimer = setInterval(() => void birthdays(), 60 * 60_000);
+const runBirthdays = () => birthdays().catch((e) => console.error('birthday run failed', e));
+void runBirthdays();
+const birthdayTimer = setInterval(() => void runBirthdays(), 60 * 60_000);
 
 // Renewals, trial endings and grace-period expiry. Idempotent, so hourly runs, restarts and several instances are safe.
-const billingTick = () => runBilling().then((r) => (r.invoiced || r.expired || r.canceled) && console.log(JSON.stringify({ event: 'billing.run', ...r }))).catch((e) => console.error('billing run failed', e));
-void billingTick();
-const billingTimer = setInterval(billingTick, 60 * 60_000);
+const runBillingTick = () => billingTick().catch((e) => console.error('billing run failed', e));
+void runBillingTick();
+const billingTimer = setInterval(runBillingTick, 60 * 60_000);
 
 /**
  * Container platforms stop a service with SIGTERM and kill it after a grace period. Stop taking new connections,

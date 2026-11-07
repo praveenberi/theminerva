@@ -18,6 +18,7 @@ import { marketing } from './routes/marketing';
 import { billing, billingAdmin, publicPlans } from './routes/billing';
 import { paymentAccount } from './routes/paymentAccount';
 import { payments, testPay } from './routes/payments';
+import { billingTick, birthdays } from './lib/jobs';
 
 /** Tracking codes, unsubscribe links and webhook tokens are bearer secrets that live in URL paths; never write them to logs. */
 export function redactPath(url: string): string {
@@ -80,6 +81,18 @@ export function createApp() {
   // readiness: the process can serve traffic, i.e. the database answers (stop sending requests while this fails)
   app.get('/api/ready', async (_req, res) => {
     try { await prisma.$queryRaw`SELECT 1`; res.json({ ok: true }); } catch { res.status(503).json({ ok: false }); }
+  });
+  // Scheduled jobs for hosts without a long-running process (Vercel Cron calls this with "Authorization: Bearer $CRON_SECRET").
+  // Disabled unless CRON_SECRET is set (24+ characters); compared in constant time.
+  app.get('/api/cron/run', async (req, res, next) => {
+    try {
+      const secret = process.env.CRON_SECRET ?? '';
+      const given = Buffer.from(String(req.headers.authorization ?? '').replace(/^Bearer /, ''));
+      const want = Buffer.from(secret);
+      if (secret.length < 24 || given.length !== want.length || !crypto.timingSafeEqual(given, want)) throw new HttpError(401, 'Not allowed', 'unauthorized');
+      const [vouchers, billing] = await Promise.all([birthdays(), billingTick()]);
+      res.json({ ok: true, birthdays: vouchers, billing });
+    } catch (e) { next(e); }
   });
   app.use('/api/auth', auth);
   app.use('/api/auth', auth2);
