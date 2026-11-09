@@ -5,10 +5,11 @@ import { Badge, Button, Card, ConfirmButton, Field, Input, Modal, QueryBoundary,
 import { api, errorMessage } from '@/lib/api';
 import { dateTime } from '@/lib/format';
 import { useSeo } from '@/lib/hooks';
+import { DEFAULT_SLIDES, HeroSlidesEditor, normalizeSlide } from '@/components/HeroSlides';
 
 type Tab = 'pages' | 'gallery' | 'testimonials' | 'events' | 'reviews';
-const BLOCKS: Record<string, { label: string; fields: Array<[string, string, 'text' | 'area' | 'paras' | 'image']> }> = {
-  'home.hero': { label: 'Homepage hero', fields: [['kicker', 'Small heading', 'text'], ['headline', 'Headline', 'text'], ['text', 'Intro text', 'area']] },
+const BLOCKS: Record<string, { label: string; fields: Array<[string, string, 'text' | 'area' | 'paras' | 'image' | 'slides']> }> = {
+  'home.hero': { label: 'Homepage hero', fields: [['kicker', 'Small heading', 'text'], ['headline', 'Headline', 'text'], ['text', 'Intro text', 'area'], ['slides', 'Homepage pictures (rotate automatically)', 'slides']] },
   'home.about': { label: 'About / restaurant story', fields: [['title', 'Section title', 'text'], ['paragraphs', 'Story (separate paragraphs with a blank line)', 'paras'], ['imageUrl', 'Image', 'image']] },
   'policy.privacy': { label: 'Privacy policy', fields: [['paragraphs', 'Policy text (blank line between paragraphs)', 'paras']] },
   'policy.terms': { label: 'Terms & conditions', fields: [['paragraphs', 'Text (blank line between paragraphs)', 'paras']] },
@@ -35,7 +36,7 @@ function Pages() {
   const spec = BLOCKS[key];
   const row = q.data?.find((b: any) => b.key === key);
   const cur = draft ?? { title: (row?.draft?.title ?? row?.title) || '', ...((row?.draft?.body ?? row?.body) || {}) };
-  const toBody = () => { const body: any = {}; for (const [f, , kind] of spec.fields) { const v = cur[f]; if (kind === 'paras') body[f] = Array.isArray(v) ? v : String(v ?? '').split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean); else if (v) body[f] = v; } if (cur.title && !spec.fields.some(([f]) => f === 'title')) body.title = cur.title; return body; };
+  const toBody = () => { const body: any = {}; for (const [f, , kind] of spec.fields) { const v = cur[f]; if (kind === 'slides') { const sl = (Array.isArray(v) ? v : []).filter((x: any) => x?.url).map(normalizeSlide); if (sl.length) body[f] = sl; } else if (kind === 'paras') body[f] = Array.isArray(v) ? v : String(v ?? '').split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean); else if (v) body[f] = v; } if (cur.title && !spec.fields.some(([f]) => f === 'title')) body.title = cur.title; return body; };
   const save = useMutation({ mutationFn: (publish: boolean) => api(`/api/cms/blocks/${key}`, { method: 'PUT', body: { title: key.startsWith('policy') ? BLOCKS[key].label : cur.title || undefined, body: toBody(), publish } }), onSuccess: (_r, publish) => { toast('success', publish ? 'Published to the website' : 'Draft saved (not live)'); setDraft(null); qc.invalidateQueries({ queryKey: ['blocks'] }); qc.invalidateQueries({ queryKey: ['home'] }); }, onError: (e) => toast('error', errorMessage(e)) });
   const val = (f: string, kind: string) => (kind === 'paras' ? (Array.isArray(cur[f]) ? cur[f].join('\n\n') : cur[f] ?? '') : cur[f] ?? '');
   return (
@@ -44,7 +45,11 @@ function Pages() {
         <ul className="space-y-1">{Object.entries(BLOCKS).map(([k, b]) => { const r = q.data.find((x: any) => x.key === k); return <li key={k}><button onClick={() => { setKey(k); setDraft(null); }} className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${key === k ? 'bg-brand text-brand-fg' : 'hover:bg-surface-2'}`}>{b.label}{r?.draft && <Badge tone="warn">draft</Badge>}</button></li>; })}</ul>
         <Card className="space-y-4 p-5"><h2 className="text-xl">{spec.label}</h2>
           {row?.draft && !draft && <p className="rounded-lg bg-warn/10 p-2 text-sm text-warn">Showing an unpublished draft.</p>}
-          {spec.fields.map(([f, label, kind]) => (
+          {spec.fields.map(([f, label, kind]) => kind === 'slides' ? (
+            <div key={f} className="space-y-2"><p className="text-sm font-medium">{label}</p>
+              {!Array.isArray(cur[f]) && <p className="rounded-lg bg-surface-2 p-2 text-xs text-muted">The website is showing its built-in pictures. Add your own below, then press Publish.</p>}
+              <HeroSlidesEditor value={Array.isArray(cur[f]) ? cur[f].map(normalizeSlide) : DEFAULT_SLIDES} onChange={(v) => setDraft({ ...cur, [f]: v })} /></div>
+          ) : (
             <Field key={f} label={label}>{(id) => kind === 'text' ? <Input id={id} value={val(f, kind)} onChange={(e) => setDraft({ ...cur, [f]: e.target.value })} /> : kind === 'image' ? (
               <div className="flex items-center gap-3">{cur[f] && <img src={cur[f]} alt="" className="h-16 w-16 rounded-lg object-cover" />}<label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm hover:bg-surface-2"><ImagePlus className="h-4 w-4" /> Upload<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={async (e) => { const u = e.target.files?.[0] && (await upload(e.target.files[0])); if (u) setDraft({ ...cur, [f]: u }); }} /></label></div>
             ) : <Textarea id={id} className={kind === 'paras' ? 'min-h-48' : ''} value={val(f, kind)} onChange={(e) => setDraft({ ...cur, [f]: e.target.value })} />}</Field>))}

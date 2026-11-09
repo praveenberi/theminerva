@@ -9,6 +9,7 @@ import { useAddToCart } from '@/components/ProductModal';
 import { useHome, useJsonLd, useSeo } from '@/lib/hooks';
 import { api, errorMessage } from '@/lib/api';
 import { WEEKDAYS } from '@/lib/format';
+import { DEFAULT_SLIDES, HeroBackground, normalizeSlide, type HeroSlide } from '@/components/HeroSlides';
 
 export function Section({ title, kicker, action, children, className = '' }: { title: string; kicker?: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
@@ -55,7 +56,9 @@ export default function Home() {
   const fade = useTransform(scrollY, [0, 500], [1, 0.2]);
   void heroRef;
   // hero slideshow: advances by itself every 6s, pauses while hovered / tab hidden, and stays still for reduced-motion users
-  const slides = r?.heroImageUrl ? [r.heroImageUrl] : ['/hero-1.jpg', '/hero-2.webp'];
+  // images: the ones set in Admin → Website content → Homepage hero, else the single hero image from Settings, else the built-in pair
+  const saved: any[] = (q.data?.content?.['home.hero']?.slides ?? []).filter((x: any) => x?.url);
+  const slides: HeroSlide[] = saved.length ? saved.map(normalizeSlide) : r?.heroImageUrl ? [normalizeSlide({ url: r.heroImageUrl, y: 35, fit: 'contain' })] : DEFAULT_SLIDES;
   const [slide, setSlide] = useState(0);
   const [paused, setPaused] = useState(false);
   useEffect(() => {
@@ -63,6 +66,7 @@ export default function Home() {
     const t = setInterval(() => { if (!document.hidden) setSlide((n) => (n + 1) % slides.length); }, 6000);
     return () => clearInterval(t);
   }, [slides.length, paused]);
+  const cur = slides[Math.min(slide, slides.length - 1)];
 
   if (q.isLoading) return <div className="mx-auto max-w-6xl space-y-6 px-4 py-10"><Skeleton className="h-[60vh]" /><Skeleton className="h-40" /></div>;
   if (q.error) return <div className="mx-auto max-w-xl p-10"><QueryBoundary q={q}>{() => null}</QueryBoundary></div>;
@@ -74,7 +78,7 @@ export default function Home() {
     <>
       <section className="relative isolate overflow-hidden bg-brand text-brand-fg" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
         <motion.div style={{ y }} className="absolute inset-0 -z-10">
-          {slides.map((src, i) => <img key={src} src={src} alt="" className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${i === slide ? 'opacity-100' : 'opacity-0'}`} fetchPriority={i === 0 ? 'high' : 'auto'} />)}
+          <HeroBackground slides={slides} index={slide} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/10" />
         </motion.div>
         {slides.length > 1 && (
@@ -83,9 +87,11 @@ export default function Home() {
           </div>
         )}
         <motion.div style={{ opacity: fade }} className="mx-auto flex min-h-[85vh] max-w-6xl flex-col justify-end px-4 pb-16 pt-24">
+          {!cur?.hideText && (<>
           <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-4 text-xs font-semibold uppercase tracking-[.3em] text-accent">{hero?.kicker ?? 'Welcome to'}</motion.p>
           <motion.h1 initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.7 }} className="max-w-3xl text-5xl leading-[1.05] sm:text-7xl">{hero?.headline ?? r.name}</motion.h1>
           <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="mt-5 max-w-xl whitespace-pre-line text-lg text-brand-fg/85">{hero?.text ?? r.tagline ?? r.description ?? 'Order online or reserve your table.'}</motion.p>
+          </>)}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }} className="mt-8 flex flex-wrap gap-3">
             <Link to="/menu"><Button size="lg" variant="accent">Order online <ArrowRight className="h-4 w-4" /></Button></Link>
             {d.config.reservationsEnabled && <Link to="/reservations"><Button size="lg" variant="outline" className="border-white/40 bg-white/10 text-white hover:bg-white/20"><CalendarDays className="h-4 w-4" /> Book a table</Button></Link>}
