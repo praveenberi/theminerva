@@ -16,7 +16,9 @@ export function useRealtime(onEvent: (type: string, payload: any) => void, opts:
       if (opts.staff && getAccessToken()) q.set('token', getAccessToken()!);
       const tr = Array.isArray(opts.track) ? opts.track.join(',') : opts.track;
       if (tr) q.set('track', tr);
-      ws = new WebSocket(`${proto}://${location.host}/ws?${q}`);
+      // Vercel cannot proxy WebSockets, so production can point straight at the API host (VITE_WS_URL=wss://api-host/ws)
+      const base = (import.meta as any).env?.VITE_WS_URL || `${proto}://${location.host}/ws`;
+      ws = new WebSocket(`${base}?${q}`);
       ws.onopen = () => { retry = 1000; };
       ws.onmessage = (e) => { try { const m = JSON.parse(e.data); if (m.type !== 'hello') cb.current(m.type, m.payload); } catch { /* ignore */ } };
       ws.onclose = () => { if (!closed) timer = setTimeout(connect, (retry = Math.min(retry * 2, 15000))); };
