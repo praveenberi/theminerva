@@ -28,6 +28,9 @@ const schema = z.object({
   AWS_REGION: z.string().optional(),
   S3_BUCKET: z.string().optional(),
   CDN_URL: z.string().optional(),
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);

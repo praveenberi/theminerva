@@ -10,6 +10,7 @@ import { audit } from '../lib/audit.js';
 import { badRequest, notFound, pageQuery, paged, paginate, parse, slugify, wrap } from '../lib/http.js';
 import { csvParse, csvStringify } from '../lib/csv.js';
 import { config } from '../config.js';
+import { cloudinaryConfigured, uploadToCloudinary } from '../services/storage.js';
 
 export const menuRouter = Router();
 export const productRouter = Router();
@@ -255,6 +256,7 @@ uploadRouter.post('/', attachAuth, requirePerm('menu.manage', 'cms.manage', 'set
   if (!f) throw badRequest('Choose an image to upload');
   const sig = SIGS.find(([, bytes]) => bytes.every((b, i) => f.buffer[i] === b));
   if (!sig || (sig[0] === 'webp' && f.buffer.subarray(8, 12).toString() !== 'WEBP')) throw badRequest('Only JPEG, PNG or WebP images are allowed');
+  if (cloudinaryConfigured()) return void res.status(201).json(await uploadToCloudinary(f.buffer, sig[2]));
   const name = `${crypto.randomBytes(12).toString('hex')}.${sig[0]}`;
   await fs.promises.writeFile(path.join(UPLOAD_DIR, name), f.buffer);
   const base = config.CDN_URL ? config.CDN_URL.replace(/\/$/, '') : '';

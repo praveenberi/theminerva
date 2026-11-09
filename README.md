@@ -37,7 +37,7 @@ Implemented and tested here: everything in the test table. **Adapters written bu
 
 ## Known gaps (be aware before launch)
 
-- No S3 upload driver and no BullMQ workers: uploads go to `server/uploads`, background jobs run in-process, Redis is unused.
+- No S3 driver and no BullMQ workers: background jobs run in-process and Redis is unused. Uploads go to Cloudinary when `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` are set (free tier; unit-tested with a mocked API, not yet run against a real account), otherwise to `server/uploads` on local disk.
 - The initial migration SQL was generated from the schema but not applied to a clean database here (tests use `db push`). Docker images and the CI workflow were written but not run here.
 - Delivery fees are postal-prefix zones (no distance/maps calculation); no third-party delivery-service adapters.
 - Multi-outlet: branches, branch prices/availability, branch-scoped staff, dashboard filter and comparison are built. Not branch-aware yet: inventory stock, coupons/campaigns, reservations and reports other than the dashboard and comparison.

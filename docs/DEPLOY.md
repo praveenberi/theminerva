@@ -12,6 +12,7 @@ First run: set `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD`, run `npm run db:seed` 
 | WhatsApp | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID` | Meta Cloud API; approved templates needed outside the 24h window. |
 | SMS | `TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM` | Adapter present; not yet wired to notification events. |
 | AI | `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL` | Enables assistant, descriptions, translations, marketing copy. |
+| Images | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Set all three to store uploads in Cloudinary (free plan). Without them uploads use local disk. |
 | CDN | `CDN_URL` | Prefix for uploaded image URLs. Mount a persistent volume/EFS at `server/uploads`. |
 
 Google Analytics / Meta Pixel / Search Console IDs are entered in the dashboard (Settings → Website & SEO).
