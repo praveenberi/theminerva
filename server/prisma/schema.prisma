@@ -1,0 +1,867 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────── Enums ─────────
+enum Role {
+  OWNER
+  MANAGER
+  KITCHEN
+  WAITER
+  CASHIER
+  DELIVERY
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  PICKUP
+  DELIVERY
+}
+
+enum OrderStatus {
+  NEW
+  ACCEPTED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  SERVED
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum ItemStatus {
+  PENDING
+  PREPARING
+  READY
+}
+
+enum PaymentMethod {
+  CARD
+  STRIPE
+  RAZORPAY
+  PAYNOW
+  UPI
+  CASH_ON_DELIVERY
+  CASH_AT_RESTAURANT
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  SEATED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum ReservationKind {
+  TABLE
+  EVENT
+  PRIVATE_DINING
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  CLEANING
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+  BOGO
+}
+
+enum StockMoveType {
+  RECEIPT
+  CONSUMPTION
+  ADJUSTMENT
+  WASTAGE
+  RETURN
+  RECONCILIATION
+}
+
+enum Channel {
+  EMAIL
+  SMS
+  WHATSAPP
+  IN_APP
+}
+
+enum QrType {
+  MAIN
+  TABLE
+  TAKEAWAY
+  EVENT
+  PRIVATE_DINING
+}
+
+// ───────── Restaurant (exactly one row) ─────────
+model Restaurant {
+  id            String   @id @default("minerva")
+  name          String   @default("The Minerva")
+  tagline       String?
+  description   String?
+  story         String?
+  phone         String?
+  email         String?
+  whatsapp      String?
+  address       String?
+  latitude      Float?
+  longitude     Float?
+  mapEmbedUrl   String?
+  currency      String   @default("SGD")
+  locale        String   @default("en-SG")
+  timezone      String   @default("Asia/Singapore")
+  logoUrl       String?
+  heroImageUrl  String?
+  social        Json     @default("{}")
+  openingHours  Json     @default("{}")
+  seo           Json     @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model Outlet {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  address   String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  users  User[]
+  tables DiningTable[]
+  orders Order[]
+  products OutletProduct[]
+}
+
+/// Branch-specific price / availability overrides (absent row = use the global menu)
+model OutletProduct {
+  outletId    String
+  productId   String
+  outlet      Outlet  @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  price       Decimal? @db.Decimal(10, 2)
+  isAvailable Boolean @default(true)
+
+  @@id([outletId, productId])
+}
+
+// ───────── Users, staff ─────────
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role
+  isActive     Boolean   @default(true)
+  outletId     String?
+  outlet       Outlet?   @relation(fields: [outletId], references: [id])
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  refreshTokens RefreshToken[]
+  shifts        Shift[]
+  attendance    Attendance[]
+  tasks         StaffTask[]
+  auditLogs     AuditLog[]
+  assignedOrders Order[] @relation("OrderStaff")
+  deliveries    Order[]  @relation("OrderDriver")
+  resetTokens   PasswordReset[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+}
+
+model Shift {
+  id      String   @id @default(cuid())
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startAt DateTime
+  endAt   DateTime
+  notes   String?
+
+  @@index([userId, startAt])
+}
+
+model Attendance {
+  id       String    @id @default(cuid())
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clockIn  DateTime  @default(now())
+  clockOut DateTime?
+
+  @@index([userId, clockIn])
+}
+
+model StaffTask {
+  id          String    @id @default(cuid())
+  assigneeId  String
+  assignee    User      @relation(fields: [assigneeId], references: [id], onDelete: Cascade)
+  title       String
+  dueAt       DateTime?
+  doneAt      DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String?
+  entityId  String?
+  detail    Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+// ───────── Menu ─────────
+model Menu {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean    @default(true)
+  availableFrom String?  // "HH:MM"
+  availableTo   String?
+  sortOrder   Int        @default(0)
+  categories  Category[]
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  menuId      String
+  menu        Menu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryTree")
+  name        String
+  slug        String     @unique
+  description String?
+  imageUrl    String?
+  sortOrder   Int        @default(0)
+  isActive    Boolean    @default(true)
+  products    Product[]
+
+  @@index([menuId, sortOrder])
+}
+
+model Product {
+  id            String   @id @default(cuid())
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id])
+  name          String
+  slug          String   @unique
+  description   String?
+  price         Decimal  @db.Decimal(10, 2)
+  discountPrice Decimal? @db.Decimal(10, 2)
+  isVegetarian  Boolean  @default(false)
+  isVegan       Boolean  @default(false)
+  allergens     String[] @default([])
+  proteins      String[] @default([]) // meat / seafood keys (chicken, pork, beef, fish, prawn …) shown as icons on the menu
+  prepMinutes   Int      @default(15)
+  isAvailable   Boolean  @default(true)
+  isFeatured    Boolean  @default(false)
+  isChefPick    Boolean  @default(false)
+  isPublished   Boolean  @default(true)
+  availableFrom String?
+  availableTo   String?
+  translations  Json     @default("{}")
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  images     ProductImage[]
+  variants   ProductVariant[]
+  addonGroups AddonGroup[]
+  recipe     RecipeLine[]
+  orderItems OrderItem[]
+  reviews    Review[]
+  outletOverrides OutletProduct[]
+
+  @@index([categoryId, sortOrder])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String?
+  sortOrder Int     @default(0)
+}
+
+model ProductVariant {
+  id         String  @id @default(cuid())
+  productId  String
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name       String
+  priceDelta Decimal @default(0) @db.Decimal(10, 2)
+  sortOrder  Int     @default(0)
+}
+
+model AddonGroup {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String
+  minSelect Int     @default(0)
+  maxSelect Int     @default(1)
+  addons    Addon[]
+}
+
+model Addon {
+  id      String     @id @default(cuid())
+  groupId String
+  group   AddonGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name    String
+  price   Decimal    @default(0) @db.Decimal(10, 2)
+}
+
+model PricingRule {
+  id         String   @id @default(cuid())
+  name       String
+  categoryId String?
+  percentOff Decimal  @db.Decimal(5, 2)
+  startTime  String?  // HH:MM
+  endTime    String?
+  days       Int[]    @default([])
+  isActive   Boolean  @default(true)
+}
+
+// ───────── Inventory ─────────
+model Supplier {
+  id      String  @id @default(cuid())
+  name    String
+  contact String?
+  phone   String?
+  email   String?
+  ingredients Ingredient[]
+  purchaseOrders PurchaseOrder[]
+}
+
+model Ingredient {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  unit         String
+  stock        Decimal  @default(0) @db.Decimal(12, 3)
+  reorderLevel Decimal  @default(0) @db.Decimal(12, 3)
+  costPerUnit  Decimal  @default(0) @db.Decimal(10, 4)
+  expiresOn    DateTime?
+  supplierId   String?
+  supplier     Supplier? @relation(fields: [supplierId], references: [id])
+  recipeLines  RecipeLine[]
+  movements    StockMovement[]
+  poLines      PurchaseOrderLine[]
+}
+
+model RecipeLine {
+  id           String     @id @default(cuid())
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity     Decimal    @db.Decimal(12, 3)
+
+  @@unique([productId, ingredientId])
+}
+
+model StockMovement {
+  id           String        @id @default(cuid())
+  ingredientId String
+  ingredient   Ingredient    @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  type         StockMoveType
+  quantity     Decimal       @db.Decimal(12, 3) // signed
+  reference    String?
+  note         String?
+  createdAt    DateTime      @default(now())
+
+  @@index([ingredientId, createdAt])
+}
+
+model PurchaseOrder {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  status     String   @default("DRAFT") // DRAFT, SENT, RECEIVED, CANCELLED
+  createdAt  DateTime @default(now())
+  receivedAt DateTime?
+  lines      PurchaseOrderLine[]
+}
+
+model PurchaseOrderLine {
+  id           String        @id @default(cuid())
+  poId         String
+  po           PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient    @relation(fields: [ingredientId], references: [id])
+  quantity     Decimal       @db.Decimal(12, 3)
+  unitCost     Decimal       @db.Decimal(10, 4)
+}
+
+// ───────── Customers & loyalty ─────────
+model Customer {
+  id            String    @id @default(cuid())
+  name          String
+  phone         String?   @unique
+  email         String?   @unique
+  passwordHash  String?
+  birthday      DateTime?
+  preferences   String?
+  allergies     String?
+  tags          String[]  @default([])
+  loyaltyPoints Int       @default(0)
+  lifetimePoints Int      @default(0)
+  tier          String    @default("Member")
+  referralCode  String    @unique @default(cuid())
+  referredById  String?
+  referredBy    Customer? @relation("Referrals", fields: [referredById], references: [id])
+  referrals     Customer[] @relation("Referrals")
+  marketingConsent Boolean @default(false)
+  consentAt     DateTime?
+  unsubscribedAt DateTime?
+  createdAt     DateTime  @default(now())
+  lastOrderAt   DateTime?
+
+  addresses     CustomerAddress[]
+  orders        Order[]
+  reservations  Reservation[]
+  loyaltyTx     LoyaltyTransaction[]
+  reviews       Review[]
+  favourites    Favourite[]
+  refreshTokens CustomerRefreshToken[]
+  vouchers      Voucher[]
+}
+
+model CustomerRefreshToken {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+}
+
+model CustomerAddress {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  label      String?
+  line1      String
+  postalCode String?
+  notes      String?
+}
+
+model Favourite {
+  customerId String
+  productId  String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  @@id([customerId, productId])
+}
+
+model LoyaltyTransaction {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  points     Int
+  reason     String   // EARN, REDEEM, REFERRAL, BIRTHDAY, ADJUST
+  orderId    String?
+  createdAt  DateTime @default(now())
+
+  // an order can only earn once
+  @@unique([orderId, reason])
+  @@index([customerId, createdAt])
+}
+
+model Voucher {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  amount     Decimal   @db.Decimal(10, 2)
+  usedAt     DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model Review {
+  id         String    @id @default(cuid())
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  productId  String?
+  product    Product?  @relation(fields: [productId], references: [id])
+  authorName String
+  rating     Int
+  comment    String?
+  isPublished Boolean  @default(false)
+  createdAt  DateTime  @default(now())
+}
+
+// ───────── Promotions ─────────
+model Coupon {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  description String?
+  type        DiscountType
+  value       Decimal      @default(0) @db.Decimal(10, 2)
+  minSubtotal Decimal      @default(0) @db.Decimal(10, 2)
+  categoryId  String?
+  customerId  String?
+  startsAt    DateTime?
+  endsAt      DateTime?
+  startTime   String?
+  endTime     String?
+  maxUses     Int?
+  usedCount   Int          @default(0)
+  isActive    Boolean      @default(true)
+  orders      Order[]
+}
+
+model Campaign {
+  id        String   @id @default(cuid())
+  name      String
+  channel   Channel
+  segment   String   @default("ALL")
+  subject   String?
+  body      String
+  status    String   @default("DRAFT")
+  scheduledAt DateTime?
+  sentAt    DateTime?
+  sentCount Int      @default(0)
+  failedCount Int    @default(0)
+  couponCode String?
+  createdAt DateTime @default(now())
+}
+
+model Banner {
+  id        String  @id @default(cuid())
+  title     String
+  subtitle  String?
+  imageUrl  String?
+  linkUrl   String?
+  isActive  Boolean @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  sortOrder Int     @default(0)
+}
+
+// ───────── Tables, reservations ─────────
+model DiningTable {
+  id        String      @id @default(cuid())
+  outletId  String?
+  outlet    Outlet?     @relation(fields: [outletId], references: [id])
+  label     String      @unique
+  capacity  Int
+  zone      String?
+  posX      Int         @default(0)
+  posY      Int         @default(0)
+  status    TableStatus @default(AVAILABLE)
+  qrToken   String      @unique @default(cuid())
+  isActive  Boolean     @default(true)
+
+  sessions     TableSession[]
+  reservations Reservation[]
+  orders       Order[]
+}
+
+model TableSession {
+  id        String      @id @default(cuid())
+  tableId   String
+  table     DiningTable @relation(fields: [tableId], references: [id])
+  openedAt  DateTime    @default(now())
+  closedAt  DateTime?
+  billRequestedAt DateTime?
+  waiterCalledAt  DateTime?
+  orders    Order[]
+
+  @@index([tableId, closedAt])
+}
+
+model Reservation {
+  id          String            @id @default(cuid())
+  reference   String            @unique
+  kind        ReservationKind   @default(TABLE)
+  customerId  String?
+  customer    Customer?         @relation(fields: [customerId], references: [id])
+  name        String
+  phone       String
+  email       String?
+  guests      Int
+  tableId     String?
+  table       DiningTable?      @relation(fields: [tableId], references: [id])
+  startAt     DateTime
+  endAt       DateTime
+  status      ReservationStatus @default(CONFIRMED)
+  notes       String?
+  depositAmount Decimal         @default(0) @db.Decimal(10, 2)
+  depositPaid Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+
+  @@index([startAt])
+  @@index([tableId, startAt])
+}
+
+model WaitlistEntry {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  guests    Int
+  notifiedAt DateTime?
+  createdAt DateTime @default(now())
+}
+
+model DeliveryZone {
+  id          String  @id @default(cuid())
+  name        String
+  postalPrefixes String[] @default([])
+  maxDistanceKm Decimal? @db.Decimal(6, 2)
+  fee         Decimal @default(0) @db.Decimal(10, 2)
+  perKmFee    Decimal @default(0) @db.Decimal(10, 2)
+  minOrder    Decimal @default(0) @db.Decimal(10, 2)
+  etaMinutes  Int     @default(45)
+  isActive    Boolean @default(true)
+}
+
+// ───────── Orders & payments ─────────
+model Order {
+  id           String      @id @default(cuid())
+  number       Int         // daily sequence: restarts at 1 each business day (restaurant timezone)
+  businessDate String      @default("") // YYYY-MM-DD in the restaurant timezone; "" for legacy rows
+  trackingToken String     @unique @default(cuid())
+  type         OrderType
+  status       OrderStatus @default(NEW)
+  outletId     String?
+  outlet       Outlet?     @relation(fields: [outletId], references: [id])
+  customerId   String?
+  customer     Customer?   @relation(fields: [customerId], references: [id])
+  guestName    String?
+  guestPhone   String?
+  guestEmail   String?
+  tableId      String?
+  table        DiningTable? @relation(fields: [tableId], references: [id])
+  sessionId    String?
+  session      TableSession? @relation(fields: [sessionId], references: [id])
+  deliveryAddress String?
+  deliveryPostal  String?
+  deliveryZoneId  String?
+  deliveryNotes   String?
+  scheduledFor DateTime?
+  notes        String?
+  kitchenNotes String?
+  subtotal     Decimal     @db.Decimal(10, 2)
+  discount     Decimal     @default(0) @db.Decimal(10, 2)
+  serviceCharge Decimal    @default(0) @db.Decimal(10, 2)
+  tax          Decimal     @default(0) @db.Decimal(10, 2)
+  deliveryFee  Decimal     @default(0) @db.Decimal(10, 2)
+  tip          Decimal     @default(0) @db.Decimal(10, 2)
+  total        Decimal     @db.Decimal(10, 2)
+  couponId     String?
+  coupon       Coupon?     @relation(fields: [couponId], references: [id])
+  voucherCode  String?
+  pointsRedeemed Int       @default(0)
+  assignedToId String?
+  assignedTo   User?       @relation("OrderStaff", fields: [assignedToId], references: [id])
+  driverId     String?
+  driver       User?       @relation("OrderDriver", fields: [driverId], references: [id])
+  prepMinutes  Int         @default(20)
+  inventoryApplied Boolean @default(false)
+  idempotencyKey String?   @unique
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  completedAt  DateTime?
+
+  items    OrderItem[]
+  history  OrderStatusHistory[]
+  payments Payment[]
+
+  @@unique([businessDate, number])
+  @@index([status, createdAt])
+  @@index([customerId])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id          String     @id @default(cuid())
+  orderId     String
+  order       Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product    @relation(fields: [productId], references: [id])
+  name        String
+  variantName String?
+  addons      Json       @default("[]")
+  quantity    Int
+  unitPrice   Decimal    @db.Decimal(10, 2)
+  lineTotal   Decimal    @db.Decimal(10, 2)
+  notes       String?
+  status      ItemStatus @default(PENDING)
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  byUserId  String?
+  note      String?
+  createdAt DateTime    @default(now())
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  orderId     String
+  order       Order         @relation(fields: [orderId], references: [id])
+  method      PaymentMethod
+  provider    String?
+  status      PaymentStatus @default(PENDING)
+  amount      Decimal       @db.Decimal(10, 2)
+  reference   String        @unique @default(cuid())
+  providerRef String?       @unique
+  idempotencyKey String?    @unique
+  createdAt   DateTime      @default(now())
+  paidAt      DateTime?
+  refunds     Refund[]
+
+  @@index([orderId])
+}
+
+model Refund {
+  id         String   @id @default(cuid())
+  paymentId  String
+  payment    Payment  @relation(fields: [paymentId], references: [id])
+  amount     Decimal  @db.Decimal(10, 2)
+  reason     String?
+  providerRef String?
+  createdById String?
+  createdAt  DateTime @default(now())
+}
+
+model WebhookEvent {
+  id        String   @id // provider event id → duplicate prevention
+  provider  String
+  createdAt DateTime @default(now())
+}
+
+// ───────── CMS, notifications, integrations ─────────
+model ContentBlock {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. home.about, policy.privacy
+  title       String?
+  body        Json     @default("{}")
+  isPublished Boolean  @default(true)
+  draft       Json?
+  updatedAt   DateTime @updatedAt
+}
+
+model GalleryImage {
+  id        String  @id @default(cuid())
+  url       String
+  alt       String
+  sortOrder Int     @default(0)
+  isPublished Boolean @default(true)
+}
+
+model Testimonial {
+  id        String  @id @default(cuid())
+  author    String
+  quote     String
+  rating    Int     @default(5)
+  isPublished Boolean @default(true)
+}
+
+model EventListing {
+  id        String  @id @default(cuid())
+  title     String
+  description String?
+  imageUrl  String?
+  eventDate DateTime?
+  isPublished Boolean @default(true)
+}
+
+model NotificationTemplate {
+  key     String  @id // order.accepted, reservation.confirmed...
+  channel Channel
+  subject String?
+  body    String
+}
+
+model NotificationLog {
+  id        String   @id @default(cuid())
+  channel   Channel
+  event     String
+  recipient String
+  subject   String?
+  body      String
+  status    String   // SENT, FAILED, SKIPPED
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model StaffNotification {
+  id        String   @id @default(cuid())
+  type      String
+  message   String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Integration {
+  provider  String   @id // stripe, razorpay, resend, whatsapp, anthropic, s3, ga, meta_pixel
+  enabled   Boolean  @default(false)
+  config    Json     @default("{}")
+  updatedAt DateTime @updatedAt
+}
+
+model Newsletter {
+  email     String   @id
+  createdAt DateTime @default(now())
+  unsubscribedAt DateTime?
+}

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.api.err
+.pgdata/
+uploads/*
+!uploads/.gitkeep
+test-results/
+playwright-report/
+.vite/
+hero.cjs
+.DS_Store
