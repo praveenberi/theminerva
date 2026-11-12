@@ -37,11 +37,11 @@ export default function Home() {
   const q = useHome();
   const { add, modal } = useAddToCart();
   const r = q.data?.restaurant;
-  useSeo(r?.seo?.title || r?.name || 'The Minerva', r?.seo?.description || r?.description || undefined, r?.seo?.ogImage || r?.heroImageUrl || undefined);
+  useSeo(r?.seo?.title || 'The Minerva | Indian, Italian & Mexican Restaurant Singapore', r?.seo?.description || r?.description || 'Discover The Minerva, a restaurant in Singapore serving authentic Indian, Hyderabadi and Andhra cuisine alongside Italian and Mexican favourites. Enjoy vegetarian and non-vegetarian dishes, refreshing drinks and memorable dining.', r?.seo?.ogImage || r?.heroImageUrl || `${location.origin}/hero-1.jpg`);
   const ld = useMemo(() => q.data ? ({
     '@context': 'https://schema.org', '@type': 'Restaurant', name: r.name, description: r.description ?? undefined, url: location.origin,
-    telephone: r.phone ?? undefined, email: r.email ?? undefined, image: r.heroImageUrl ?? undefined, servesCuisine: undefined,
-    address: r.address ? { '@type': 'PostalAddress', streetAddress: r.address } : undefined,
+    telephone: r.phone ?? undefined, email: r.email ?? undefined, image: r.heroImageUrl ?? `${location.origin}/hero-1.jpg`, servesCuisine: ['Indian', 'Hyderabadi', 'Andhra', 'Italian', 'Mexican'],
+    address: r.address ? { '@type': 'PostalAddress', streetAddress: r.address, addressLocality: 'Singapore', addressCountry: 'SG' } : undefined,
     geo: r.latitude != null ? { '@type': 'GeoCoordinates', latitude: r.latitude, longitude: r.longitude } : undefined,
     hasMenu: `${location.origin}/menu`, acceptsReservations: q.data.config.reservationsEnabled,
     openingHoursSpecification: Object.entries(r.openingHours ?? {}).filter(([, h]: any) => h?.open && !h.closed).map(([d, h]: any) => ({ '@type': 'OpeningHoursSpecification', dayOfWeek: d.charAt(0).toUpperCase() + d.slice(1), opens: h.open, closes: h.close })),
@@ -98,6 +98,11 @@ export default function Home() {
             <Link to="/menu"><Button size="lg" variant="ghost" className="text-white hover:bg-white/10">Explore the menu</Button></Link>
           </motion.div>
         </motion.div>
+      </section>
+
+      <section className="mx-auto max-w-3xl px-4 pt-14 text-center">
+        <h2 className="text-3xl sm:text-4xl">A World of Indian, Italian and Mexican Cuisine in Singapore</h2>
+        <p className="mt-4 text-muted">At {r.name}, we bring together authentic Indian, Hyderabadi and Andhra flavours with delicious Italian and vibrant Mexican specialities — vegetarian and non-vegetarian dishes, refreshing drinks and memorable dining.</p>
       </section>
 
       {d.banners.length > 0 && (

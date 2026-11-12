@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api/
+Disallow: /track/
+Disallow: /t/
+Disallow: /account
+Disallow: /checkout
+
+Sitemap: https://www.theminerva.shop/sitemap.xml

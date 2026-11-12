@@ -9,8 +9,8 @@ import { cn } from '@/lib/format';
 export interface HeroSlide { url: string; alt?: string; x: number; y: number; fit: 'cover' | 'contain'; hideText?: boolean }
 
 export const DEFAULT_SLIDES: HeroSlide[] = [
-  { url: '/hero-1.jpg', alt: 'The Minerva — a world of cuisines', x: 50, y: 30, fit: 'contain', hideText: true },
-  { url: '/hero-2.webp', alt: 'Guests toasting with cocktails', x: 50, y: 40, fit: 'cover' },
+  { url: '/hero-1.jpg', alt: 'The Minerva restaurant in Singapore — Indian, Italian and Mexican cuisine, drinks and dining', x: 50, y: 30, fit: 'contain', hideText: true },
+  { url: '/hero-2.webp', alt: 'Guests toasting with cocktails at The Minerva restaurant', x: 50, y: 40, fit: 'cover' },
 ];
 
 export const normalizeSlide = (s: any): HeroSlide => ({
